@@ -1,0 +1,156 @@
+"""Αποστολή email για τις κρατήσεις (επιβεβαίωση, αλλαγή ώρας, ακύρωση).
+
+* Με ρυθμισμένο SMTP (π.χ. Gmail) το email φεύγει κανονικά.
+* Χωρίς SMTP_HOST αποθηκεύεται ως αρχείο .eml στον φάκελο `outbox/`
+  (ανοίγει με διπλό κλικ στο Outlook / Thunderbird) - χρήσιμο για δοκιμές.
+
+Τα email στέλνονται στο παρασκήνιο (BackgroundTasks του FastAPI), οπότε η
+κράτηση δεν καθυστερεί και ένα πρόβλημα στο email ΔΕΝ ακυρώνει την κράτηση.
+"""
+
+import html
+import io
+import logging
+import smtplib
+import ssl
+from datetime import date, datetime
+from email.message import EmailMessage
+from email.utils import make_msgid
+from pathlib import Path
+
+import qrcode
+from qrcode.image.pure import PyPNGImage
+
+from .config import settings
+
+log = logging.getLogger("smartbeach.mail")
+
+WEEKDAYS = ["Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο", "Κυριακή"]
+MONTHS = ["Ιανουαρίου", "Φεβρουαρίου", "Μαρτίου", "Απριλίου", "Μαΐου", "Ιουνίου", "Ιουλίου",
+          "Αυγούστου", "Σεπτεμβρίου", "Οκτωβρίου", "Νοεμβρίου", "Δεκεμβρίου"]
+
+SUBJECTS = {
+    "created": "Επιβεβαίωση κράτησης",
+    "updated": "Αλλαγή ώρας κράτησης",
+    "cancelled": "Ακύρωση κράτησης",
+}
+INTROS = {
+    "created": "Η κράτησή σου ολοκληρώθηκε! Δείξε τον κωδικό QR στην είσοδο.",
+    "updated": "Οι ώρες της κράτησής σου άλλαξαν. Ο κωδικός QR παραμένει ο ίδιος.",
+    "cancelled": "Η κράτησή σου ακυρώθηκε. Ελπίζουμε να σε δούμε σύντομα!",
+}
+
+
+def long_date(iso: str) -> str:
+    d = date.fromisoformat(iso)
+    return f"{WEEKDAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]} {d.year}"
+
+
+def qr_png(code: str) -> bytes:
+    img = qrcode.make(code, image_factory=PyPNGImage, box_size=8, border=2)
+    buf = io.BytesIO()
+    img.save(buf)
+    return buf.getvalue()
+
+
+def build_booking_email(booking: dict, kind: str) -> EmailMessage:
+    """Φτιάχνει το email (κείμενο + HTML με ενσωματωμένο QR)."""
+    b = booking
+    when = long_date(b["res_date"])
+    seat = f"Σειρά {b['grid_x']}, θέση {b['grid_y']} ({'VIP' if b['type'] == 'premium' else 'κανονική'})"
+    price = f"{b['price']:.2f} €".replace(".", ",")
+    code = b.get("checkin_code") or ""
+    pretty_code = " ".join(code[i : i + 4] for i in range(0, len(code), 4))
+    directions = f"https://www.google.com/maps/dir/?api=1&destination={b['beach_ltd']},{b['beach_lgd']}"
+    show_qr = kind != "cancelled" and bool(code)
+
+    msg = EmailMessage()
+    msg["Subject"] = f"{SUBJECTS[kind]} – {b['beach_name']}, {when}"
+    msg["From"] = settings.mail_from
+    msg["To"] = b["email"]
+
+    rows = [
+        ("Κατάστημα", b["beach_name"]),
+        ("Ημερομηνία", when),
+        ("Ώρες", f"{b['start_time']} – {b['end_time']}"),
+        ("Θέση", seat),
+        ("Κόστος", price),
+        ("Ωράριο καταστήματος", f"{b['open_time']} – {b['close_time']}"),
+    ]
+    if show_qr:
+        rows.append(("Κωδικός εισόδου", pretty_code))
+
+    text = "\n".join(
+        [f"Γεια σου {b['username']},", "", INTROS[kind], ""]
+        + [f"{k}: {v}" for k, v in rows]
+        + ["", f"Οδηγίες: {directions}", "", "SmartBeach"]
+    )
+    msg.set_content(text)
+
+    qr_cid = make_msgid(domain="smartbeach.local")
+    table = "".join(
+        f'<tr><td style="padding:6px 12px 6px 0;color:#62615d">{html.escape(k)}</td>'
+        f'<td style="padding:6px 0;font-weight:600;color:#1c1c1a">{html.escape(v)}</td></tr>'
+        for k, v in rows
+    )
+    qr_html = (
+        f'<div style="text-align:center;margin:20px 0"><img src="cid:{qr_cid[1:-1]}" width="200" height="200" '
+        f'alt="QR {html.escape(pretty_code)}" style="border:1px solid #e4e2da;border-radius:12px;padding:8px"/>'
+        f'<div style="font-size:20px;font-weight:700;letter-spacing:2px;margin-top:8px">{html.escape(pretty_code)}</div></div>'
+        if show_qr
+        else ""
+    )
+    color = "#c62828" if kind == "cancelled" else "#007c80"
+    body = f"""<!doctype html><html><body style="margin:0;background:#f6f4ef;font-family:Segoe UI,Arial,sans-serif">
+<div style="max-width:520px;margin:0 auto;padding:24px">
+  <div style="background:{color};color:#fff;border-radius:14px 14px 0 0;padding:18px 22px">
+    <div style="font-size:22px;font-weight:800">SmartBeach</div>
+    <div style="font-size:15px;opacity:.9">{html.escape(SUBJECTS[kind])}</div>
+  </div>
+  <div style="background:#fff;border-radius:0 0 14px 14px;padding:22px;border:1px solid #e4e2da;border-top:0">
+    <p style="font-size:16px;margin:0 0 6px">Γεια σου {html.escape(b['username'])},</p>
+    <p style="font-size:15px;color:#3c3b38;margin:0 0 14px">{html.escape(INTROS[kind])}</p>
+    <table style="font-size:15px;border-collapse:collapse">{table}</table>
+    {qr_html}
+    <p style="margin:18px 0 0"><a href="{html.escape(directions)}"
+       style="background:#007c80;color:#fff;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:600">
+       Οδηγίες στον χάρτη</a></p>
+  </div>
+</div></body></html>"""
+    msg.add_alternative(body, subtype="html")
+    if show_qr:
+        msg.get_payload()[1].add_related(qr_png(code), maintype="image", subtype="png", cid=qr_cid)
+    return msg
+
+
+def deliver(msg: EmailMessage) -> str:
+    """Στέλνει με SMTP ή γράφει στο outbox. Επιστρέφει πού κατέληξε."""
+    if settings.smtp_host:
+        context = ssl.create_default_context()
+        if settings.smtp_ssl:
+            server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=20)
+        else:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20)
+        with server:
+            if not settings.smtp_ssl:
+                server.starttls(context=context)
+            if settings.smtp_user:
+                server.login(settings.smtp_user, settings.smtp_password)
+            server.send_message(msg)
+        return f"smtp:{msg['To']}"
+    folder = Path(settings.mail_outbox)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{datetime.now():%Y%m%d-%H%M%S-%f}.eml"
+    path.write_bytes(bytes(msg))
+    return str(path)
+
+
+def send_booking_email(booking: dict, kind: str) -> None:
+    """Ασφαλής αποστολή: τυχόν σφάλμα καταγράφεται, δεν "σπάει" την κράτηση."""
+    if not settings.mail_enabled:
+        return
+    try:
+        where = deliver(build_booking_email(booking, kind))
+        log.info("Email '%s' για την κράτηση %s -> %s", kind, booking.get("booking_id"), where)
+    except Exception:  # noqa: BLE001
+        log.exception("Αποτυχία αποστολής email για την κράτηση %s", booking.get("booking_id"))

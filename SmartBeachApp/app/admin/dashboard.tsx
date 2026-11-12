@@ -7,6 +7,7 @@ import { Banner, Chip, ChipRow, Label, Loading, Screen } from '@/components/ui';
 import { C } from '@/constants/brand';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { managedBeaches } from '@/lib/roles';
 import { euro, MONTHS, MONTHS_SHORT, parseISO, pct, shortDate } from '@/lib/dates';
 import type { Beach, Stats } from '@/lib/types';
 
@@ -17,7 +18,7 @@ function monthBounds(year: number, month: number) {
 }
 
 export default function DashboardScreen() {
-  const { config } = useAuth();
+  const { user, config } = useAuth();
   const [beaches, setBeaches] = useState<Beach[]>([]);
   const [beachId, setBeachId] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
@@ -28,8 +29,8 @@ export default function DashboardScreen() {
   const [heatPick, setHeatPick] = useState<MapCell | null>(null);
 
   useEffect(() => {
-    api<Beach[]>('/beaches').then(setBeaches).catch(() => {});
-  }, []);
+    api<Beach[]>('/beaches').then((list) => setBeaches(managedBeaches(user, list))).catch(() => {});
+  }, [user]);
 
   const load = useCallback(async () => {
     setLoading(true);

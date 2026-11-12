@@ -6,11 +6,12 @@ import { Badge, Banner, Button, Card, Chip, ChipRow, Field, Label, Loading, Scre
 import { C } from '@/constants/brand';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { managedBeaches } from '@/lib/roles';
 import { confirm } from '@/lib/dialogs';
 import type { Beach, Sunbed, SunbedMap as MapData } from '@/lib/types';
 
 export default function AdminSunbedsScreen() {
-  const { config } = useAuth();
+  const { user, config } = useAuth();
   const [beaches, setBeaches] = useState<Beach[]>([]);
   const [beachId, setBeachId] = useState<number | null>(null);
   const [map, setMap] = useState<MapData | null>(null);
@@ -34,12 +35,13 @@ export default function AdminSunbedsScreen() {
 
   useEffect(() => {
     api<Beach[]>('/beaches')
-      .then((list) => {
+      .then((all) => {
+        const list = managedBeaches(user, all);
         setBeaches(list);
         setBeachId((cur) => cur ?? list[0]?.id ?? null);
       })
       .catch((e) => setError(e.message));
-  }, []);
+  }, [user]);
 
   const load = useCallback(async () => {
     if (!beachId || !config) return;

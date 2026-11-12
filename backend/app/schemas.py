@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
-Role = Literal["user", "staff", "admin"]
+Role = Literal["user", "staff", "owner", "admin"]
 SunbedType = Literal["normal", "premium"]
 
 
@@ -47,6 +47,11 @@ class BeachIn(BaseModel):
     description: str = Field(default="", max_length=2000)
     ltd: float = Field(ge=-90, le=90)
     lgd: float = Field(ge=-180, le=180)
+    # Ωράριο λειτουργίας του καταστήματος (αν λείπει: προεπιλογή από ρυθμίσεις)
+    open_time: Optional[str] = Field(default=None, pattern=TIME_PATTERN)
+    close_time: Optional[str] = Field(default=None, pattern=TIME_PATTERN)
+    # Καταστηματάρχης (το αλλάζει μόνο ο admin). 0 = κανένας.
+    owner_id: Optional[int] = None
 
 
 class GridIn(BaseModel):

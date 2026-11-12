@@ -1,8 +1,9 @@
 """Επιχειρησιακοί κανόνες κρατήσεων (καθαρές συναρτήσεις, χωρίς βάση).
 
 Εδώ βρίσκεται η "λογική" που περιγράφεται στο κείμενο της πτυχιακής:
-  * σεζόν λειτουργίας και ωράριο
-  * ελάχιστη διάρκεια, βήμα μισής ώρας
+  * σεζόν λειτουργίας
+  * ωράριο ΑΝΑ κατάστημα (κάθε beach bar έχει το δικό του)
+  * ελεύθερη επιλογή ώρας άφιξης/αναχώρησης μέσα στο ωράριο
   * έλεγχος επικάλυψης χρονικών διαστημάτων
   * τιμολόγηση μισής / ολόκληρης ημέρας
 """
@@ -50,16 +51,13 @@ def fmt_time(value) -> str:
     return str(value)[:5]
 
 
+def to_time(value) -> time:
+    """Οποιαδήποτε αναπαράσταση ώρας (str/time/timedelta) -> time."""
+    return value if isinstance(value, time) else parse_time(fmt_time(value))
+
+
 def minutes(t: time) -> int:
     return t.hour * 60 + t.minute
-
-
-def opening() -> time:
-    return parse_time(settings.opening_time)
-
-
-def closing() -> time:
-    return parse_time(settings.closing_time)
 
 
 def overlaps(a_start: time, a_end: time, b_start: time, b_end: time) -> bool:
@@ -67,6 +65,10 @@ def overlaps(a_start: time, a_end: time, b_start: time, b_end: time) -> bool:
     επικαλύπτονται αν το καθένα ξεκινά πριν τελειώσει το άλλο.
     Έτσι 10:00-14:00 και 14:00-18:00 ΔΕΝ επικαλύπτονται."""
     return a_start < b_end and b_start < a_end
+
+
+def within_hours(start: time, end: time, open_t: time, close_t: time) -> bool:
+    return open_t <= start and end <= close_t
 
 
 def in_season(d: date) -> bool:
@@ -101,8 +103,14 @@ def current_or_last_season(ref: Optional[date] = None) -> tuple[date, date]:
     return start, end
 
 
-def validate_window(res_date: date, start: time, end: time) -> None:
-    """Ελέγχει ότι μια κράτηση [start, end) την res_date επιτρέπεται."""
+def validate_hours(open_t: time, close_t: time) -> None:
+    if close_t <= open_t:
+        raise BookingRuleError("Η ώρα κλεισίματος πρέπει να είναι μετά την ώρα ανοίγματος.")
+
+
+def validate_window(res_date: date, start: time, end: time, open_t: time, close_t: time) -> None:
+    """Ελέγχει ότι μια κράτηση [start, end) την res_date επιτρέπεται στο
+    κατάστημα με ωράριο [open_t, close_t]. Οι ώρες είναι ελεύθερες (ανά λεπτό)."""
     if not in_season(res_date):
         raise BookingRuleError(
             f"Κρατήσεις γίνονται μόνο μέσα στη σεζόν "
@@ -110,12 +118,10 @@ def validate_window(res_date: date, start: time, end: time) -> None:
         )
     if res_date < today():
         raise BookingRuleError("Δεν μπορείς να κάνεις κράτηση για ημερομηνία που πέρασε.")
-    if start.minute % 30 or end.minute % 30:
-        raise BookingRuleError("Οι ώρες πρέπει να είναι σε βήματα μισής ώρας (π.χ. 10:00, 10:30).")
     if end <= start:
         raise BookingRuleError("Η ώρα αναχώρησης πρέπει να είναι μετά την ώρα άφιξης.")
-    if start < opening() or end > closing():
-        raise BookingRuleError(f"Το ωράριο λειτουργίας είναι {settings.opening_time}-{settings.closing_time}.")
+    if not within_hours(start, end, open_t, close_t):
+        raise BookingRuleError(f"Το κατάστημα είναι ανοιχτό {fmt_time(open_t)}-{fmt_time(close_t)}.")
     if minutes(end) - minutes(start) < settings.min_booking_minutes:
         raise BookingRuleError(f"Η ελάχιστη διάρκεια κράτησης είναι {settings.min_booking_minutes} λεπτά.")
     if res_date == today() and end <= now().time():

@@ -35,8 +35,9 @@ class Settings:
     # --- Κανόνες κρατήσεων ---
     season_start_month = int(os.getenv("SEASON_START_MONTH", "5"))
     season_end_month = int(os.getenv("SEASON_END_MONTH", "10"))
-    opening_time = os.getenv("OPENING_TIME", "08:00")
-    closing_time = os.getenv("CLOSING_TIME", "20:00")
+    # Ωράριο που παίρνει ένα ΝΕΟ κατάστημα (μετά το αλλάζει ο admin / καταστηματάρχης)
+    default_open_time = os.getenv("DEFAULT_OPEN_TIME", "08:00")
+    default_close_time = os.getenv("DEFAULT_CLOSE_TIME", "20:00")
     min_booking_minutes = int(os.getenv("MIN_BOOKING_MINUTES", "60"))
     # Κράτηση έως τόσες ώρες χρεώνεται ως "μισή μέρα" με έκπτωση.
     half_day_max_hours = float(os.getenv("HALF_DAY_MAX_HOURS", "6"))
@@ -46,6 +47,17 @@ class Settings:
 
     # --- CORS (για Expo web) ---
     cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+
+    # --- Email (SMTP). Αν λείπει το SMTP_HOST, τα email αποθηκεύονται ως
+    # αρχεία .eml στον φάκελο MAIL_OUTBOX (για δοκιμές χωρίς λογαριασμό email).
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_ssl = _bool("SMTP_SSL", False)  # True για θύρα 465
+    mail_from = os.getenv("MAIL_FROM", "") or os.getenv("SMTP_USER", "") or "SmartBeach <no-reply@smartbeach.local>"
+    mail_outbox = os.getenv("MAIL_OUTBOX", "outbox")
+    mail_enabled = _bool("MAIL_ENABLED", True)
 
     # --- AI Βοηθός (Claude API) ---
     assistant_model = os.getenv("ASSISTANT_MODEL", "claude-opus-5-5")

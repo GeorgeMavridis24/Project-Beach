@@ -42,20 +42,19 @@ Your tools:
 
 How to work:
 - Every fact about beaches, prices, free sunbeds and bookings comes from a tool result. Never invent sunbeds, prices or availability. When a tool returns an error, explain it simply and suggest an alternative such as another time window, date or beach.
-- propose_booking needs a beach, a date and a time window. When the user hasn't given them, ask briefly or offer the usual windows (morning 08:00-14:00, afternoon 14:00-20:00, full day 08:00-20:00). Choose a specific free sunbed from get_sunbed_availability that fits what the user asked for (premium/VIP, close to the sea, or cheapest).
+- Every beach bar has its own opening hours (open_time-close_time in the tool results). Customers pick any arrival and leaving time within those hours, to the minute.
+- propose_booking needs a beach, a date, an arrival time and a leaving time. When the user hasn't given them, ask briefly; "all day" means the beach's whole opening hours. Choose a specific free sunbed from get_sunbed_availability that fits what the user asked for (premium/VIP, close to the sea, or cheapest).
 - Rows are numbered from the sea: row 1 is the first row on the sand, next to the water.
 - You cannot cancel or change bookings. For that, point the user to the «Κρατήσεις» tab of the app.
 - For requests unrelated to SmartBeach, beaches or the user's visit, say briefly that you can only help with SmartBeach.
 
-Business rules: bookings only in months {season_from}-{season_to}; opening hours {opening}-{closing}; times in 30-minute steps; minimum {min_minutes} minutes. A booking of up to {half_hours:g} hours costs {half_pct}% of the sunbed's daily price (half day); a longer one costs the full daily price."""
+Business rules: bookings only in months {season_from}-{season_to}, within the opening hours of each beach bar; minimum {min_minutes} minutes. A booking of up to {half_hours:g} hours costs {half_pct}% of the sunbed's daily price (half day); a longer one costs the full daily price. Customers receive a confirmation email with their QR code after booking."""
 
 
 def _system_blocks(user: dict) -> list[dict]:
     stable = SYSTEM_PROMPT.format(
         season_from=settings.season_start_month,
         season_to=settings.season_end_month,
-        opening=settings.opening_time,
-        closing=settings.closing_time,
         min_minutes=settings.min_booking_minutes,
         half_hours=settings.half_day_max_hours,
         half_pct=round(settings.half_day_factor * 100),
@@ -98,14 +97,16 @@ def build_tools(user: dict, proposals: list[dict]) -> list:
 
         Args:
             date: Date as YYYY-MM-DD to count free sunbeds for. Omit it to list beaches without availability.
-            start_time: Start of the time window as HH:MM. Defaults to opening time.
-            end_time: End of the time window as HH:MM. Defaults to closing time.
+            start_time: Start of the time window as HH:MM. Omit both times to use each beach's full opening hours.
+            end_time: End of the time window as HH:MM.
             sunbed_type: "normal" or "premium" (VIP, front rows) to only consider that type.
             max_price: Only consider sunbeds whose daily price is at most this many euros.
             query: Text to match in the beach name or description.
         """
         if sunbed_type not in (None, "normal", "premium"):
             raise ValueError('sunbed_type must be "normal" or "premium".')
+        if bool(start_time) != bool(end_time):
+            raise ValueError("Give both start_time and end_time, or neither.")
         results = beach_service.search_beaches(
             q=query,
             res_date=rules.parse_date(date) if date else None,
@@ -121,6 +122,8 @@ def build_tools(user: dict, proposals: list[dict]) -> list:
                     "beach_id": b["id"],
                     "name": b["name"],
                     "description": b["description"],
+                    "opening_hours": f"{b['open_time']}-{b['close_time']}",
+                    "open_for_requested_time": b["open_for_window"],
                     "sunbeds": b["total_sunbeds"],
                     "premium_sunbeds": b["premium_sunbeds"],
                     "daily_price_from": b["min_price"],
@@ -145,8 +148,8 @@ def build_tools(user: dict, proposals: list[dict]) -> list:
         Args:
             beach_id: The beach id from search_beaches.
             date: Date as YYYY-MM-DD.
-            start_time: Start of the time window as HH:MM. Defaults to opening time.
-            end_time: End of the time window as HH:MM. Defaults to closing time.
+            start_time: Start of the time window as HH:MM. Defaults to the beach's opening time.
+            end_time: End of the time window as HH:MM. Defaults to the beach's closing time.
             sunbed_type: "normal" or "premium" to only list that type.
             max_price: Only list sunbeds whose daily price is at most this many euros.
         """
@@ -167,6 +170,7 @@ def build_tools(user: dict, proposals: list[dict]) -> list:
         return _json(
             {
                 "beach": res["beach"]["name"],
+                "opening_hours": f"{res['beach']['open_time']}-{res['beach']['close_time']}",
                 "date": res["date"],
                 "window": f"{res['start_time']}-{res['end_time']}",
                 "can_be_booked": res["bookable"],

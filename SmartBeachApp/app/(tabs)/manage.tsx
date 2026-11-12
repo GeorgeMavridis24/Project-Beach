@@ -6,24 +6,27 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen } from '@/components/ui';
 import { C } from '@/constants/brand';
 import { useAuth } from '@/lib/auth';
+import { ROLE_LABEL } from '@/lib/roles';
 
 type Item = { href: Href; title: string; text: string; icon: React.ComponentProps<typeof Ionicons>['name']; roles: string[] };
 
 const ITEMS: Item[] = [
-  { href: '/admin/checkin', title: 'Check-in εισόδου', text: 'Σάρωση QR και σημερινές κρατήσεις', icon: 'qr-code-outline', roles: ['staff', 'admin'] },
-  { href: '/admin/dashboard', title: 'Στατιστικά', text: 'Έσοδα, πληρότητα, δημοφιλείς θέσεις', icon: 'stats-chart-outline', roles: ['admin'] },
-  { href: '/admin/bookings', title: 'Κρατήσεις', text: 'Αναζήτηση, ακύρωση, αλλαγή ώρας', icon: 'list-outline', roles: ['admin'] },
-  { href: '/admin/sunbeds', title: 'Ξαπλώστρες', text: 'Πλέγμα, τιμές, εκτός λειτουργίας', icon: 'grid-outline', roles: ['admin'] },
-  { href: '/admin/beaches', title: 'Παραλίες', text: 'Προσθήκη και επεξεργασία', icon: 'umbrella-outline', roles: ['admin'] },
-  { href: '/admin/users', title: 'Χρήστες', text: 'Ρόλοι πελατών, προσωπικού, διαχειριστών', icon: 'people-outline', roles: ['admin'] },
+  { href: '/admin/checkin', title: 'Check-in εισόδου', text: 'Σάρωση QR και σημερινές κρατήσεις', icon: 'qr-code-outline', roles: ['staff', 'owner', 'admin'] },
+  { href: '/admin/beaches', title: 'Το κατάστημά μου', text: 'Ωράριο λειτουργίας, στοιχεία, θέση στον χάρτη', icon: 'storefront-outline', roles: ['owner'] },
+  { href: '/admin/dashboard', title: 'Στατιστικά', text: 'Έσοδα, πληρότητα, δημοφιλείς θέσεις', icon: 'stats-chart-outline', roles: ['owner', 'admin'] },
+  { href: '/admin/bookings', title: 'Κρατήσεις', text: 'Αναζήτηση, ακύρωση, αλλαγή ώρας', icon: 'list-outline', roles: ['owner', 'admin'] },
+  { href: '/admin/sunbeds', title: 'Ξαπλώστρες', text: 'Πλέγμα, τιμές, εκτός λειτουργίας', icon: 'grid-outline', roles: ['owner', 'admin'] },
+  { href: '/admin/beaches', title: 'Καταστήματα', text: 'Ωράριο, καταστηματάρχες, θέση στον χάρτη', icon: 'umbrella-outline', roles: ['admin'] },
+  { href: '/admin/users', title: 'Χρήστες', text: 'Ρόλοι πελατών, προσωπικού, καταστηματαρχών', icon: 'people-outline', roles: ['admin'] },
 ];
+
 
 export default function ManageScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const items = ITEMS.filter((i) => user && i.roles.includes(user.role));
   return (
-    <Screen title="Διαχείριση" subtitle={user?.role === 'admin' ? 'Διαχειριστής' : 'Προσωπικό'}>
+    <Screen title="Διαχείριση" subtitle={user ? ROLE_LABEL[user.role] : ''}>
       {items.map((i) => (
         <Pressable key={i.title} onPress={() => router.push(i.href)} accessibilityRole="button" style={({ pressed }) => [st.item, pressed && { opacity: 0.85 }]}>
           <View style={st.icon}>

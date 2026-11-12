@@ -10,7 +10,8 @@ import { confirm, notify } from '@/lib/dialogs';
 import type { Booking } from '@/lib/types';
 
 import { BookingQr } from './BookingQr';
-import { TimeWindow, TimeWindowPicker } from './pickers';
+import { openDirections } from './beachMapShared';
+import { TimeRangePicker, TimeWindow } from './pickers';
 import { Badge, Banner, Button, Card } from './ui';
 
 /**
@@ -87,7 +88,13 @@ export function BookingCard({ booking, admin = false, onChanged }: { booking: Bo
       {editing ? (
         <View style={{ marginTop: 8 }}>
           {error ? <Banner text={error} /> : null}
-          <TimeWindowPicker config={config} value={win} onChange={setWin} />
+          <TimeRangePicker
+            open={booking.open_time}
+            close={booking.close_time}
+            value={win}
+            onChange={setWin}
+            minMinutes={config?.min_booking_minutes ?? 60}
+          />
           <View style={b.actions}>
             <Button title="Αποθήκευση" small onPress={saveTime} loading={busy} style={{ flex: 1 }} />
             <Button title="Άκυρο" small variant="ghost" onPress={() => setEditing(false)} style={{ flex: 1 }} />
@@ -100,6 +107,9 @@ export function BookingCard({ booking, admin = false, onChanged }: { booking: Bo
           ) : null}
           {canModify ? <Button title="Αλλαγή ώρας" icon="create-outline" small variant="secondary" onPress={() => setEditing(true)} /> : null}
           {canCancel ? <Button title="Ακύρωση" icon="close-outline" small variant="danger" onPress={cancel} loading={busy} /> : null}
+          {!admin && booking.status === 'confirmed' && !booking.is_past ? (
+            <Button title="Οδηγίες" icon="navigate-outline" small variant="ghost" onPress={() => openDirections(booking.beach_ltd, booking.beach_lgd)} />
+          ) : null}
         </View>
       )}
     </Card>

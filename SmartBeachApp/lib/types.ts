@@ -1,4 +1,4 @@
-export type Role = 'user' | 'staff' | 'admin';
+export type Role = 'user' | 'staff' | 'owner' | 'admin';
 export type SunbedType = 'normal' | 'premium';
 
 export type User = { id: number; username: string; email: string; role: Role };
@@ -6,8 +6,8 @@ export type User = { id: number; username: string; email: string; role: Role };
 export type AppConfig = {
   season_start_month: number;
   season_end_month: number;
-  opening_time: string;
-  closing_time: string;
+  default_open_time: string;
+  default_close_time: string;
   min_booking_minutes: number;
   half_day_max_hours: number;
   half_day_factor: number;
@@ -15,17 +15,24 @@ export type AppConfig = {
   today: string;
 };
 
-export type Beach = {
+export type BeachInfo = {
   id: number;
   name: string;
   description: string;
   ltd: number;
   lgd: number;
+  open_time: string;
+  close_time: string;
+  owner_id: number | null;
+};
+
+export type Beach = BeachInfo & {
   total_sunbeds: number;
   premium_sunbeds: number;
   min_price: number | null;
   max_price: number | null;
   available_sunbeds: number | null;
+  open_for_window: boolean | null;
   distance_km: number | null;
 };
 
@@ -41,7 +48,7 @@ export type Sunbed = {
 };
 
 export type SunbedMap = {
-  beach: { id: number; name: string; description: string; ltd: number; lgd: number };
+  beach: BeachInfo;
   date: string;
   start_time: string;
   end_time: string;
@@ -68,6 +75,10 @@ export type Booking = {
   type: SunbedType;
   beach_id: number;
   beach_name: string;
+  beach_ltd: number;
+  beach_lgd: number;
+  open_time: string;
+  close_time: string;
   user_id: number;
   username: string;
   email: string;
@@ -117,4 +128,4 @@ export type Stats = {
   };
 };
 
-export type AdminUser = User & { created_at: string; bookings: number; spent: number };
+export type AdminUser = User & { created_at: string; bookings: number; spent: number; owns: string | null };

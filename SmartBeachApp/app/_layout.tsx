@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { C } from '@/constants/brand';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { isStaffLike } from '@/lib/roles';
 
 function RootNavigator() {
   const { user, loading } = useAuth();
@@ -16,7 +17,7 @@ function RootNavigator() {
       </View>
     );
   }
-  const isStaff = user?.role === 'admin' || user?.role === 'staff';
+  const isStaff = isStaffLike(user);
   // Protected routes: χωρίς σύνδεση φαίνεται μόνο το login, και η "Διαχείριση"
   // υπάρχει μόνο για προσωπικό/διαχειριστές.
   return (

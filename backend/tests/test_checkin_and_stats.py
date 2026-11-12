@@ -70,8 +70,8 @@ def test_stats_dashboard(client, grid, make_user, freeze_now):
     assert k["revenue"] == 32.0 and k["bookings"] == 3 and k["cancelled"] == 1
     assert k["cancellation_rate"] == 0.25
     assert k["customers"] == 2
-    # 12 ξαπλώστρες x 12 ώρες x 2 μέρες = 288 ώρες. Κλεισμένες: 12+6+6 = 24 -> 8.33%
-    assert k["occupancy_rate"] == round(24 / 288, 4)
+    # Ωράριο Oia 08:00-22:00 -> 12 ξαπλώστρες x 14 ώρες x 2 μέρες = 336 ώρες. Κλεισμένες: 12+6+6 = 24
+    assert k["occupancy_rate"] == round(24 / 336, 4)
     assert k["checkin_rate"] == round(1 / 3, 4)
     assert [d["bookings"] for d in data["daily"]] == [1, 2]
     assert {x["slot"]: x["bookings"] for x in data["by_slot"]} == {"morning": 1, "afternoon": 1, "full_day": 1}

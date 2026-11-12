@@ -1,7 +1,7 @@
 """Στατιστικά για το dashboard του διαχειριστή.
 
 Πληρότητα (occupancy) = κλεισμένα λεπτά ξαπλώστρας / διαθέσιμα λεπτά ξαπλώστρας
-όπου διαθέσιμα = ενεργές ξαπλώστρες x λεπτά ωραρίου x ημέρες περιόδου.
+όπου διαθέσιμα = Σ(ενεργές ξαπλώστρες x λεπτά ωραρίου ΤΟΥ καταστήματος) x ημέρες.
 """
 
 from datetime import date, timedelta
@@ -22,21 +22,35 @@ def _i(v) -> int:
     return int(v) if v is not None else 0
 
 
-def dashboard(date_from: date, date_to: date, beach_id: Optional[int] = None) -> dict:
-    beach_sql = " AND s.beach_id = %s" if beach_id else ""
-    beach_params = [beach_id] if beach_id else []
+def dashboard(
+    date_from: date,
+    date_to: date,
+    beach_ids: Optional[list[int]] = None,
+    heat_beach_id: Optional[int] = None,
+) -> dict:
+    """beach_ids: None = όλα τα καταστήματα, αλλιώς μόνο αυτά.
+    heat_beach_id: για ποιο κατάστημα να υπολογιστεί ο χάρτης θερμότητας."""
+    if beach_ids is not None and not beach_ids:
+        beach_ids = [-1]  # κανένα κατάστημα -> άδεια αποτελέσματα
+    beach_sql = f" AND s.beach_id IN ({', '.join(['%s'] * len(beach_ids))})" if beach_ids else ""
+    beach_params = list(beach_ids) if beach_ids else []
     base_where = "r.res_date BETWEEN %s AND %s" + beach_sql
     base_params = [date_from, date_to] + beach_params
 
-    open_minutes = rules.minutes(rules.closing()) - rules.minutes(rules.opening())
     days = (date_to - date_from).days + 1
 
-    sunbed_rows = db.fetch_all(
-        "SELECT beach_id, COUNT(*) AS n FROM sunbeds WHERE status = 'active' GROUP BY beach_id"
+    # Διαθέσιμα λεπτά ανά ημέρα για κάθε κατάστημα = ενεργές ξαπλώστρες x λεπτά ωραρίου του
+    cap_rows = db.fetch_all(
+        """SELECT b.id, TIME_TO_SEC(TIMEDIFF(b.close_time, b.open_time)) / 60 AS open_minutes,
+                  COUNT(s.id) AS active
+           FROM beaches b LEFT JOIN sunbeds s ON s.beach_id = b.id AND s.status = 'active'
+           GROUP BY b.id, b.open_time, b.close_time"""
     )
-    sunbeds_per_beach = {r["beach_id"]: _i(r["n"]) for r in sunbed_rows}
-    active_sunbeds = sunbeds_per_beach.get(beach_id, 0) if beach_id else sum(sunbeds_per_beach.values())
-    capacity_per_day = active_sunbeds * open_minutes
+    in_scope = (lambda bid: bid in beach_ids) if beach_ids else (lambda bid: True)
+    capacity_by_beach = {r["id"]: _i(r["active"]) * _f(r["open_minutes"]) for r in cap_rows}
+    sunbeds_by_beach = {r["id"]: _i(r["active"]) for r in cap_rows}
+    active_sunbeds = sum(n for bid, n in sunbeds_by_beach.items() if in_scope(bid))
+    capacity_per_day = sum(c for bid, c in capacity_by_beach.items() if in_scope(bid))
 
     k = db.fetch_one(
         f"""SELECT
@@ -157,7 +171,9 @@ def dashboard(date_from: date, date_to: date, beach_id: Optional[int] = None) ->
     )
     by_beach = []
     for r in beach_rows:
-        cap = sunbeds_per_beach.get(r["id"], 0) * open_minutes * days
+        if not in_scope(r["id"]):
+            continue
+        cap = capacity_by_beach.get(r["id"], 0) * days
         by_beach.append(
             {
                 "beach_id": r["id"],
@@ -169,7 +185,7 @@ def dashboard(date_from: date, date_to: date, beach_id: Optional[int] = None) ->
         )
 
     heatmap = None
-    if beach_id:
+    if heat_beach_id:
         cells = db.fetch_all(
             """SELECT s.id, s.grid_x, s.grid_y, s.type, s.status,
                       COUNT(r.id) AS bookings, COALESCE(SUM(r.price), 0) AS revenue
@@ -178,7 +194,7 @@ def dashboard(date_from: date, date_to: date, beach_id: Optional[int] = None) ->
                                     AND r.res_date BETWEEN %s AND %s
                WHERE s.beach_id = %s
                GROUP BY s.id, s.grid_x, s.grid_y, s.type, s.status""",
-            (date_from, date_to, beach_id),
+            (date_from, date_to, heat_beach_id),
         )
         heatmap = {
             "rows": max((c["grid_x"] for c in cells), default=0),
@@ -201,7 +217,7 @@ def dashboard(date_from: date, date_to: date, beach_id: Optional[int] = None) ->
     return {
         "date_from": date_from.isoformat(),
         "date_to": date_to.isoformat(),
-        "beach_id": beach_id,
+        "beach_id": heat_beach_id,
         "kpis": kpis,
         "daily": daily,
         "by_month": months,

@@ -35,19 +35,28 @@ def test_price_half_and_full_day():
 
 def test_validate_window_rules(freeze_now):
     freeze_now(datetime(2027, 6, 15, 12, 0))
-    rules.validate_window(date(2027, 6, 15), t("12:30"), t("14:00"))  # OK
+    hours = (t("08:00"), t("22:00"))
+    rules.validate_window(date(2027, 6, 15), t("12:30"), t("14:00"), *hours)  # OK
+    rules.validate_window(date(2027, 6, 20), t("10:17"), t("13:43"), *hours)  # ελεύθερα λεπτά: OK
+    rules.validate_window(date(2027, 6, 20), t("08:00"), t("22:00"), *hours)  # όλο το ωράριο: OK
     cases = [
         (date(2027, 12, 1), "10:00", "12:00", "σεζόν"),
         (date(2027, 6, 14), "10:00", "12:00", "πέρασε"),
-        (date(2027, 6, 20), "10:15", "12:00", "μισής ώρας"),
         (date(2027, 6, 20), "12:00", "10:00", "μετά"),
-        (date(2027, 6, 20), "07:00", "10:00", "ωράριο"),
+        (date(2027, 6, 20), "07:30", "10:00", "08:00-22:00"),
+        (date(2027, 6, 20), "21:00", "22:30", "08:00-22:00"),
         (date(2027, 6, 20), "10:00", "10:30", "ελάχιστη"),
         (date(2027, 6, 15), "09:00", "11:00", "έχει ήδη περάσει"),
     ]
     for d, a, b, msg in cases:
         with pytest.raises(BookingRuleError, match=msg):
-            rules.validate_window(d, t(a), t(b))
+            rules.validate_window(d, t(a), t(b), *hours)
+
+
+def test_validate_hours():
+    rules.validate_hours(t("09:00"), t("21:00"))
+    with pytest.raises(BookingRuleError):
+        rules.validate_hours(t("22:00"), t("08:00"))
 
 
 def test_first_bookable_date_and_season():

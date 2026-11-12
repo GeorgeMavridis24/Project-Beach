@@ -6,10 +6,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Badge, Banner, Button, Card, Chip, ChipRow, Empty, Field, Screen, SectionTitle } from '@/components/ui';
 import { C } from '@/constants/brand';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { managedBeaches } from '@/lib/roles';
 import { longDate } from '@/lib/dates';
 import type { Beach, Booking } from '@/lib/types';
 
 export default function CheckinScreen() {
+  const { user } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
   const [code, setCode] = useState('');
@@ -29,9 +32,9 @@ export default function CheckinScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      api<Beach[]>('/beaches').then(setBeaches).catch(() => {});
+      api<Beach[]>('/beaches').then((list) => setBeaches(managedBeaches(user, list))).catch(() => {});
       loadToday();
-    }, [loadToday]),
+    }, [loadToday, user]),
   );
 
   const checkIn = async (value: string) => {

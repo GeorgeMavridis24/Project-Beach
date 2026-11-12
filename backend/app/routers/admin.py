@@ -1,17 +1,26 @@
+"""Διαχείριση. Ο admin βλέπει όλα τα καταστήματα, ο καταστηματάρχης (owner)
+μόνο τα δικά του - το φίλτρο εφαρμόζεται εδώ, στον server, όχι στην εφαρμογή."""
+
 from datetime import date
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from mysql.connector import errors as mysql_errors
 
 from .. import booking_rules as rules
 from .. import db
+from ..mailer import send_booking_email
 from ..schemas import BookingTimeIn, UserUpdateIn
-from ..security import require_admin
+from ..security import ensure_can_manage, managed_beach_ids, require_admin, require_manager
 from ..services import bookings as booking_service
 from ..services import stats as stats_service
 
 router = APIRouter(prefix="/admin", tags=["Διαχείριση"])
+
+
+def _public(booking: dict) -> dict:
+    booking.pop("checkin_code", None)  # ο κωδικός εισόδου είναι μόνο για τον πελάτη
+    return booking
 
 
 # ---------------------------------------------------------------- κρατήσεις
@@ -23,28 +32,36 @@ def all_bookings(
     status: Optional[Literal["confirmed", "cancelled"]] = None,
     q: Optional[str] = Query(None, max_length=100, description="Όνομα ή email πελάτη"),
     limit: int = Query(300, ge=1, le=1000),
-    _: dict = Depends(require_admin),
+    user: dict = Depends(require_manager),
 ):
-    return booking_service.list_all(beach_id, date_from, date_to, status, q, limit)
+    return booking_service.list_all(beach_id, date_from, date_to, status, q, limit, beach_ids=managed_beach_ids(user))
 
 
 @router.post("/bookings/{booking_id}/cancel")
-def cancel_booking(booking_id: int, _: dict = Depends(require_admin)):
-    return booking_service.cancel(booking_id, user_id=None)
+def cancel_booking(booking_id: int, background: BackgroundTasks, user: dict = Depends(require_manager)):
+    booking = booking_service.cancel(booking_id, user_id=None, beach_ids=managed_beach_ids(user))
+    background.add_task(send_booking_email, dict(booking), "cancelled")
+    return _public(booking)
 
 
 @router.put("/bookings/{booking_id}/time")
-def change_time(booking_id: int, data: BookingTimeIn, _: dict = Depends(require_admin)):
-    return booking_service.update_times(
-        booking_id, rules.parse_time(data.start_time), rules.parse_time(data.end_time), user_id=None
+def change_time(booking_id: int, data: BookingTimeIn, background: BackgroundTasks, user: dict = Depends(require_manager)):
+    booking = booking_service.update_times(
+        booking_id,
+        rules.parse_time(data.start_time),
+        rules.parse_time(data.end_time),
+        user_id=None,
+        beach_ids=managed_beach_ids(user),
     )
+    background.add_task(send_booking_email, dict(booking), "updated")
+    return _public(booking)
 
 
 # ---------------------------------------------------------------- χρήστες
 @router.get("/users")
 def list_users(
     q: Optional[str] = Query(None, max_length=100),
-    role: Optional[Literal["user", "staff", "admin"]] = None,
+    role: Optional[Literal["user", "staff", "owner", "admin"]] = None,
     _: dict = Depends(require_admin),
 ):
     where, params = [], []
@@ -56,7 +73,9 @@ def list_users(
         params.append(role)
     sql = """SELECT u.id, u.username, u.email, u.role, u.created_at,
                     COUNT(r.id) AS bookings,
-                    COALESCE(SUM(CASE WHEN r.status = 'confirmed' THEN r.price END), 0) AS spent
+                    COALESCE(SUM(CASE WHEN r.status = 'confirmed' THEN r.price END), 0) AS spent,
+                    (SELECT GROUP_CONCAT(b.name ORDER BY b.name SEPARATOR ', ')
+                       FROM beaches b WHERE b.owner_id = u.id) AS owns
              FROM users u LEFT JOIN reserves r ON r.user_id = u.id"""
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -76,15 +95,19 @@ def update_user(user_id: int, data: UserUpdateIn, admin: dict = Depends(require_
     if user_id == admin["id"] and data.role and data.role != "admin":
         raise HTTPException(status_code=400, detail="Δεν μπορείς να αφαιρέσεις τον ρόλο admin από τον εαυτό σου.")
     try:
-        db.execute(
-            "UPDATE users SET username = %s, email = %s, role = %s WHERE id = %s",
-            (
-                data.username or current["username"],
-                (data.email or current["email"]).lower(),
-                data.role or current["role"],
-                user_id,
-            ),
-        )
+        with db.transaction() as cur:
+            cur.execute(
+                "UPDATE users SET username = %s, email = %s, role = %s WHERE id = %s",
+                (
+                    data.username or current["username"],
+                    (data.email or current["email"]).lower(),
+                    data.role or current["role"],
+                    user_id,
+                ),
+            )
+            # Αν δεν είναι πια καταστηματάρχης, αποσυνδέεται από τα καταστήματα.
+            if (data.role or current["role"]) != "owner":
+                cur.execute("UPDATE beaches SET owner_id = NULL WHERE owner_id = %s", (user_id,))
     except mysql_errors.IntegrityError:
         raise HTTPException(status_code=409, detail="Το email χρησιμοποιείται ήδη.")
     return db.fetch_one("SELECT id, username, email, role FROM users WHERE id = %s", (user_id,))
@@ -96,7 +119,7 @@ def stats(
     beach_id: Optional[int] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
-    _: dict = Depends(require_admin),
+    user: dict = Depends(require_manager),
 ):
     """Dashboard. Προεπιλογή: η τρέχουσα (ή η πιο πρόσφατη) σεζόν."""
     season_start, season_end = rules.current_or_last_season()
@@ -106,4 +129,9 @@ def stats(
         raise HTTPException(status_code=400, detail="Το 'έως' είναι πριν από το 'από'.")
     if (date_to - date_from).days > 400:
         raise HTTPException(status_code=400, detail="Μέγιστη περίοδος: 400 ημέρες.")
-    return stats_service.dashboard(date_from, date_to, beach_id)
+    if beach_id:
+        ensure_can_manage(user, beach_id)
+        scope = [beach_id]
+    else:
+        scope = managed_beach_ids(user)
+    return stats_service.dashboard(date_from, date_to, beach_ids=scope, heat_beach_id=beach_id)

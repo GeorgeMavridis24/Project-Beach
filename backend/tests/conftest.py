@@ -7,6 +7,7 @@
 
 import os
 import re
+import tempfile
 from pathlib import Path
 
 os.environ["DB_HOST"] = os.getenv("TEST_DB_HOST", "127.0.0.1")
@@ -17,6 +18,8 @@ os.environ["DB_NAME"] = "smartbeach_test"
 os.environ["DB_POOL_SIZE"] = "16"
 os.environ["SECRET_KEY"] = "test-secret-key-for-pytest-only-0123456789"
 os.environ["CHECKIN_REQUIRE_TODAY"] = "true"
+os.environ["SMTP_HOST"] = ""
+os.environ["MAIL_OUTBOX"] = tempfile.mkdtemp(prefix="smartbeach-outbox-")
 
 import mysql.connector  # noqa: E402
 import pytest  # noqa: E402
@@ -85,6 +88,15 @@ def clean(sql):
         sql(f"TRUNCATE TABLE {table}")
     sql("SET FOREIGN_KEY_CHECKS = 1")
     yield
+
+
+@pytest.fixture()
+def outbox():
+    """Ο φάκελος όπου "στέλνονται" τα email στα tests (άδειος σε κάθε test)."""
+    folder = Path(os.environ["MAIL_OUTBOX"])
+    for f in folder.glob("*.eml"):
+        f.unlink()
+    return folder
 
 
 @pytest.fixture()

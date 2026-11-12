@@ -8,7 +8,8 @@ CREATE DATABASE smartbeach CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE smartbeach;
 
 -- ---------------------------------------------------------------------
--- Χρήστες. Ρόλοι: user (πελάτης), staff (προσωπικό είσοδου), admin.
+-- Χρήστες. Ρόλοι: user (πελάτης), staff (προσωπικό εισόδου),
+-- owner (καταστηματάρχης: διαχειρίζεται ΜΟΝΟ το δικό του beach bar), admin.
 -- Η εγγραφή από την εφαρμογή δίνει ΠΑΝΤΑ ρόλο 'user'.
 -- ---------------------------------------------------------------------
 CREATE TABLE users (
@@ -16,12 +17,13 @@ CREATE TABLE users (
     username VARCHAR(100) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    role ENUM('user', 'staff', 'admin') NOT NULL DEFAULT 'user',
+    role ENUM('user', 'staff', 'owner', 'admin') NOT NULL DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- Παραλίες / Beach bars
+-- Παραλίες / Beach bars. Κάθε κατάστημα έχει το δικό του ωράριο
+-- (open_time - close_time) και προαιρετικά έναν καταστηματάρχη (owner_id).
 -- ---------------------------------------------------------------------
 CREATE TABLE beaches (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -29,7 +31,12 @@ CREATE TABLE beaches (
     description TEXT,
     ltd DECIMAL(18, 15) NOT NULL,
     lgd DECIMAL(18, 15) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    open_time TIME NOT NULL DEFAULT '08:00:00',
+    close_time TIME NOT NULL DEFAULT '20:00:00',
+    owner_id INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT chk_hours CHECK (close_time > open_time)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -81,7 +88,7 @@ CREATE TABLE reserves (
 -- Αρχικά δεδομένα: παραλίες
 -- (Για admin λογαριασμό: python -m scripts.create_admin  μέσα στο backend/)
 -- ---------------------------------------------------------------------
-INSERT INTO beaches (name, description, ltd, lgd) VALUES
-('Oia Beach Bar', 'Πανέμορφη αμμώδης παραλία με ρηχά νερά.', 40.25805700578036, 23.200562496453955),
-('Fratelli Beach Bar', 'Διάσημη παραλία με το κουφάρι ενός πλοίου.', 40.25838711202865, 23.203786260930215),
-('Accordo Pizzeria Beach Bar', 'Γραφικός κολπίσκος στο Πήλιο.', 40.258394088982655, 23.202378864182002);
+INSERT INTO beaches (name, description, ltd, lgd, open_time, close_time) VALUES
+('Oia Beach Bar', 'Πανέμορφη αμμώδης παραλία με ρηχά νερά.', 40.25805700578036, 23.200562496453955, '08:00', '22:00'),
+('Fratelli Beach Bar', 'Διάσημη παραλία με το κουφάρι ενός πλοίου.', 40.25838711202865, 23.203786260930215, '08:00', '21:00'),
+('Accordo Pizzeria Beach Bar', 'Γραφικός κολπίσκος στο Πήλιο.', 40.258394088982655, 23.202378864182002, '09:00', '21:00');

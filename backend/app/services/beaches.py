@@ -2,6 +2,8 @@
 
 Οι ίδιες συναρτήσεις χρησιμοποιούνται από τα REST endpoints ΚΑΙ από τον
 AI βοηθό, ώστε ο βοηθός να βλέπει ακριβώς τα ίδια δεδομένα με την εφαρμογή.
+Κάθε κατάστημα έχει δικό του ωράριο: αν δεν δοθούν ώρες, ως διάστημα
+θεωρείται όλο το ωράριο του καταστήματος.
 """
 
 import math
@@ -10,18 +12,18 @@ from typing import Optional
 
 from .. import db
 from ..booking_rules import (
-    BookingRuleError,
-    closing,
     compute_price,
     fmt_time,
     in_season,
-    opening,
     overlaps,
-    parse_time,
+    to_time,
     today,
+    within_hours,
 )
 
-SORTS = {"name", "price", "availability", "distance"}
+BEACH_COLUMNS = """b.id, b.name, b.description, b.ltd, b.lgd, b.owner_id,
+       TIME_FORMAT(b.open_time, '%H:%i') AS open_time,
+       TIME_FORMAT(b.close_time, '%H:%i') AS close_time"""
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -30,6 +32,19 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dp, dl = p2 - p1, math.radians(lon2 - lon1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return 2 * r * math.asin(math.sqrt(a))
+
+
+def _beach(row: dict) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row["description"] or "",
+        "ltd": float(row["ltd"]),
+        "lgd": float(row["lgd"]),
+        "open_time": row["open_time"],
+        "close_time": row["close_time"],
+        "owner_id": row["owner_id"],
+    }
 
 
 def search_beaches(
@@ -47,11 +62,8 @@ def search_beaches(
 ) -> list[dict]:
     """Λίστα παραλιών με στατιστικά ξαπλωστρών που ταιριάζουν στα φίλτρα.
 
-    Αν δοθεί ημερομηνία, υπολογίζεται και πόσες ξαπλώστρες είναι ελεύθερες
-    στο διάστημα [start, end) (προεπιλογή: όλο το ωράριο)."""
-    start = start or opening()
-    end = end or closing()
-
+    Αν δοθεί ημερομηνία, υπολογίζεται πόσες ξαπλώστρες είναι ελεύθερες στο
+    διάστημα [start, end) - ή σε όλο το ωράριο κάθε καταστήματος αν λείπουν."""
     join_filters = ["s.status = 'active'"]
     join_params: list = []
     if sunbed_type:
@@ -68,7 +80,8 @@ def search_beaches(
         available_expr = """SUM(CASE WHEN s.id IS NOT NULL AND NOT EXISTS (
                 SELECT 1 FROM reserves r
                 WHERE r.sunbed_id = s.id AND r.res_date = %s AND r.status = 'confirmed'
-                  AND r.res_time < %s AND r.leave_time > %s) THEN 1 ELSE 0 END)"""
+                  AND r.res_time < COALESCE(%s, b.close_time)
+                  AND r.leave_time > COALESCE(%s, b.open_time)) THEN 1 ELSE 0 END)"""
         select_params = [res_date, end, start]
     else:
         available_expr = "NULL"
@@ -81,7 +94,7 @@ def search_beaches(
         where_params += [like, like]
 
     sql = f"""
-        SELECT b.id, b.name, b.description, b.ltd, b.lgd,
+        SELECT {BEACH_COLUMNS},
                COUNT(s.id) AS total_sunbeds,
                SUM(CASE WHEN s.type = 'premium' THEN 1 ELSE 0 END) AS premium_sunbeds,
                MIN(s.price) AS min_price,
@@ -90,25 +103,30 @@ def search_beaches(
         FROM beaches b
         LEFT JOIN sunbeds s ON s.beach_id = b.id AND {' AND '.join(join_filters)}
         {('WHERE ' + ' AND '.join(where)) if where else ''}
-        GROUP BY b.id, b.name, b.description, b.ltd, b.lgd
+        GROUP BY b.id, b.name, b.description, b.ltd, b.lgd, b.owner_id, b.open_time, b.close_time
     """
     rows = db.fetch_all(sql, select_params + join_params + where_params)
 
     beaches = []
     for row in rows:
-        item = {
-            "id": row["id"],
-            "name": row["name"],
-            "description": row["description"] or "",
-            "ltd": float(row["ltd"]),
-            "lgd": float(row["lgd"]),
-            "total_sunbeds": int(row["total_sunbeds"] or 0),
-            "premium_sunbeds": int(row["premium_sunbeds"] or 0),
-            "min_price": float(row["min_price"]) if row["min_price"] is not None else None,
-            "max_price": float(row["max_price"]) if row["max_price"] is not None else None,
-            "available_sunbeds": int(row["available_sunbeds"]) if row["available_sunbeds"] is not None else None,
-            "distance_km": None,
-        }
+        item = _beach(row)
+        item.update(
+            {
+                "total_sunbeds": int(row["total_sunbeds"] or 0),
+                "premium_sunbeds": int(row["premium_sunbeds"] or 0),
+                "min_price": float(row["min_price"]) if row["min_price"] is not None else None,
+                "max_price": float(row["max_price"]) if row["max_price"] is not None else None,
+                "available_sunbeds": int(row["available_sunbeds"]) if row["available_sunbeds"] is not None else None,
+                "open_for_window": None,
+                "distance_km": None,
+            }
+        )
+        # Το κατάστημα είναι ανοιχτό τις ώρες που ζήτησε ο χρήστης;
+        if start and end:
+            fits = within_hours(start, end, to_time(item["open_time"]), to_time(item["close_time"]))
+            item["open_for_window"] = fits
+            if not fits and item["available_sunbeds"] is not None:
+                item["available_sunbeds"] = 0
         if lat is not None and lon is not None:
             item["distance_km"] = round(haversine_km(lat, lon, item["ltd"], item["lgd"]), 2)
         beaches.append(item)
@@ -131,11 +149,8 @@ def search_beaches(
 
 
 def get_beach(beach_id: int) -> Optional[dict]:
-    row = db.fetch_one("SELECT id, name, description, ltd, lgd FROM beaches WHERE id = %s", (beach_id,))
-    if row:
-        row["ltd"], row["lgd"] = float(row["ltd"]), float(row["lgd"])
-        row["description"] = row["description"] or ""
-    return row
+    row = db.fetch_one(f"SELECT {BEACH_COLUMNS} FROM beaches b WHERE b.id = %s", (beach_id,))
+    return _beach(row) if row else None
 
 
 def sunbed_map(
@@ -152,8 +167,9 @@ def sunbed_map(
     beach = get_beach(beach_id)
     if beach is None:
         return None
-    start = start or opening()
-    end = end or closing()
+    open_t, close_t = to_time(beach["open_time"]), to_time(beach["close_time"])
+    start = start or open_t
+    end = end or close_t
 
     sunbeds = db.fetch_all(
         "SELECT id, grid_x, grid_y, price, type, status FROM sunbeds WHERE beach_id = %s ORDER BY grid_x, grid_y",
@@ -168,14 +184,11 @@ def sunbed_map(
     )
     slots: dict[int, list[tuple]] = {}
     for b in bookings:
-        slots.setdefault(b["sunbed_id"], []).append((b["res_time"], b["leave_time"]))
-
-    def as_time(v) -> time:
-        return parse_time(fmt_time(v))
+        slots.setdefault(b["sunbed_id"], []).append((to_time(b["res_time"]), to_time(b["leave_time"])))
 
     result = []
     for s in sunbeds:
-        booked = [(as_time(a), as_time(b)) for a, b in slots.get(s["id"], [])]
+        booked = slots.get(s["id"], [])
         if s["status"] == "out_of_order":
             state = "out_of_order"
         elif any(overlaps(start, end, a, b) for a, b in booked):
@@ -188,7 +201,7 @@ def sunbed_map(
             "grid_y": s["grid_y"],
             "type": s["type"],
             "price": float(s["price"]),
-            "quoted_price": float(compute_price(s["price"], start, end)),
+            "quoted_price": float(compute_price(s["price"], start, end)) if end > start else float(s["price"]),
             "status": state,
             "booked_slots": [{"start": fmt_time(a), "end": fmt_time(b)} for a, b in booked],
         }
@@ -205,6 +218,8 @@ def sunbed_map(
         bookable, reason = False, "Η ημερομηνία είναι εκτός σεζόν."
     elif res_date < today():
         bookable, reason = False, "Η ημερομηνία έχει περάσει."
+    elif not within_hours(start, end, open_t, close_t):
+        bookable, reason = False, f"Το κατάστημα είναι ανοιχτό {beach['open_time']}-{beach['close_time']}."
 
     return {
         "beach": beach,
@@ -223,10 +238,3 @@ def sunbed_map(
         },
         "sunbeds": result,
     }
-
-
-def require_valid_filters(sort: str, sunbed_type: Optional[str]) -> None:
-    if sort not in SORTS:
-        raise BookingRuleError(f"Άγνωστη ταξινόμηση '{sort}'.")
-    if sunbed_type not in (None, "normal", "premium"):
-        raise BookingRuleError("Ο τύπος πρέπει να είναι 'normal' ή 'premium'.")

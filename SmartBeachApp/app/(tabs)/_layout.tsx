@@ -5,6 +5,7 @@ import React from 'react';
 import { HapticTab } from '@/components/haptic-tab';
 import { C } from '@/constants/brand';
 import { useAuth } from '@/lib/auth';
+import { isStaffLike } from '@/lib/roles';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -17,7 +18,7 @@ function icon(name: IconName) {
 
 export default function TabLayout() {
   const { user } = useAuth();
-  const isStaff = user?.role === 'admin' || user?.role === 'staff';
+  const isStaff = isStaffLike(user);
   return (
     <Tabs
       screenOptions={{

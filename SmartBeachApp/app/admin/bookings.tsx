@@ -8,13 +8,14 @@ import { Banner, Chip, ChipRow, Empty, Label, Loading, Screen } from '@/componen
 import { C } from '@/constants/brand';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { managedBeaches } from '@/lib/roles';
 import type { Beach, Booking } from '@/lib/types';
 
 type Period = 'all' | 'upcoming' | 'day';
 type Status = 'all' | 'confirmed' | 'cancelled';
 
 export default function AdminBookingsScreen() {
-  const { config } = useAuth();
+  const { user, config } = useAuth();
   const [beaches, setBeaches] = useState<Beach[]>([]);
   const [beachId, setBeachId] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>('confirmed');
@@ -27,8 +28,8 @@ export default function AdminBookingsScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<Beach[]>('/beaches').then(setBeaches).catch(() => {});
-  }, []);
+    api<Beach[]>('/beaches').then((list) => setBeaches(managedBeaches(user, list))).catch(() => {});
+  }, [user]);
   useEffect(() => {
     if (config && !day) setDay(config.first_bookable_date);
   }, [config, day]);

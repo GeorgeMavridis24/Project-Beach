@@ -2,8 +2,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 
+import { openDirections } from '@/components/beachMapShared';
 import { BookingQr } from '@/components/BookingQr';
-import { DateStrip, presets, TimeWindow, TimeWindowPicker } from '@/components/pickers';
+import { DateStrip, fitWindow, TimeRangePicker, TimeWindow } from '@/components/pickers';
 import { MapCell, MapLegend, SunbedMap } from '@/components/SunbedMap';
 import { Badge, Banner, Button, Card, Chip, ChipRow, Empty, Label, Loading, Screen } from '@/components/ui';
 import { C } from '@/constants/brand';
@@ -17,13 +18,12 @@ const PRICES = [10, 15, 20, 30];
 export default function BookScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ beachId?: string; date?: string; start?: string; end?: string; type?: string }>();
-  const { config } = useAuth();
-  const fullDay = presets(config)[2];
+  const { user, config } = useAuth();
 
   const [beaches, setBeaches] = useState<Beach[]>([]);
   const [beachId, setBeachId] = useState<number | null>(null);
   const [date, setDate] = useState('');
-  const [win, setWin] = useState<TimeWindow>({ start: fullDay.start, end: fullDay.end });
+  const [win, setWin] = useState<TimeWindow | null>(null);
   const [type, setType] = useState<SunbedType | null>(null);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [onlyFree, setOnlyFree] = useState(false);
@@ -39,7 +39,7 @@ export default function BookScreen() {
   useEffect(() => {
     if (params.beachId) setBeachId(Number(params.beachId));
     if (params.date) setDate(params.date);
-    if (params.start && params.end) setWin({ start: params.start, end: params.end });
+    setWin(params.start && params.end ? { start: params.start, end: params.end } : null);
     if (params.type === 'normal' || params.type === 'premium') setType(params.type);
     setDone(null);
   }, [params.beachId, params.date, params.start, params.end, params.type]);
@@ -57,8 +57,17 @@ export default function BookScreen() {
       .catch((e) => setError(e.message));
   }, []);
 
+  const beach = useMemo(() => beaches.find((b) => b.id === beachId) ?? null, [beaches, beachId]);
+
+  // Οι ώρες πρέπει να είναι μέσα στο ωράριο του καταστήματος
+  useEffect(() => {
+    if (!beach) return;
+    const fitted = fitWindow(win, beach.open_time, beach.close_time);
+    if (fitted !== win) setWin(fitted);
+  }, [beach, win]);
+
   const loadMap = useCallback(async () => {
-    if (!beachId || !date) return;
+    if (!beachId || !date || !win) return;
     setLoading(true);
     setError(null);
     try {
@@ -91,7 +100,7 @@ export default function BookScreen() {
   const freeMatching = (map?.sunbeds ?? []).filter((s) => matches(s) && s.status === 'available').length;
 
   const book = async () => {
-    if (!selected || !map) return;
+    if (!selected || !map || !win) return;
     setBooking(true);
     setError(null);
     try {
@@ -124,8 +133,16 @@ export default function BookScreen() {
           </Text>
           {done.checkin_code ? <BookingQr code={done.checkin_code} /> : null}
         </Card>
+        <Banner text={`Σου στείλαμε email επιβεβαίωσης με τον κωδικό QR στο ${user?.email ?? 'email σου'}.`} tone="info" />
         <Button title="Οι κρατήσεις μου" icon="ticket-outline" onPress={() => router.navigate('/bookings')} />
-        <Button title="Νέα κράτηση" variant="secondary" style={{ marginTop: 10 }} onPress={() => setDone(null)} />
+        <Button
+          title="Οδηγίες προς το κατάστημα"
+          icon="navigate-outline"
+          variant="secondary"
+          style={{ marginTop: 10 }}
+          onPress={() => openDirections(done.beach_ltd, done.beach_lgd)}
+        />
+        <Button title="Νέα κράτηση" variant="ghost" style={{ marginTop: 6 }} onPress={() => setDone(null)} />
       </Screen>
     );
   }
@@ -134,7 +151,7 @@ export default function BookScreen() {
 
   return (
     <Screen title="Νέα κράτηση" subtitle="Διάλεξε θέση πάνω στον χάρτη της παραλίας" onRefresh={loadMap}>
-      <Label>Παραλία</Label>
+      <Label>Κατάστημα</Label>
       <ChipRow>
         {beaches.map((b) => (
           <Chip
@@ -150,8 +167,23 @@ export default function BookScreen() {
       </ChipRow>
 
       <Label>Ημερομηνία</Label>
-      <DateStrip config={config} value={date} onChange={(d) => { setDate(d); setSelected(null); }} />
-      <TimeWindowPicker config={config} value={win} onChange={setWin} />
+      <DateStrip
+        config={config}
+        value={date}
+        onChange={(d) => {
+          setDate(d);
+          setSelected(null);
+        }}
+      />
+      {beach && win ? (
+        <TimeRangePicker
+          open={beach.open_time}
+          close={beach.close_time}
+          value={win}
+          onChange={setWin}
+          minMinutes={config?.min_booking_minutes ?? 60}
+        />
+      ) : null}
 
       <Label>Φίλτρα</Label>
       <ChipRow>
@@ -173,7 +205,7 @@ export default function BookScreen() {
       {loading && !map ? (
         <Loading />
       ) : !map || map.summary.total === 0 ? (
-        <Empty text="Αυτή η παραλία δεν έχει ακόμα ξαπλώστρες." icon="grid-outline" />
+        <Empty text="Αυτό το κατάστημα δεν έχει ακόμα ξαπλώστρες." icon="grid-outline" />
       ) : (
         <>
           <Text style={st.summary}>
@@ -190,7 +222,7 @@ export default function BookScreen() {
         </>
       )}
 
-      {selected ? (
+      {selected && win ? (
         <Card style={st.panel}>
           <View style={st.panelHead}>
             <Text style={st.panelTitle}>
@@ -222,13 +254,28 @@ export default function BookScreen() {
             />
           ) : (
             <Banner
-              text={selected.status === 'out_of_order' ? 'Η ξαπλώστρα είναι εκτός λειτουργίας.' : 'Κλεισμένη για τις ώρες που διάλεξες. Δοκίμασε άλλο διάστημα.'}
+              text={
+                selected.status === 'out_of_order'
+                  ? 'Η ξαπλώστρα είναι εκτός λειτουργίας.'
+                  : 'Κλεισμένη για τις ώρες που διάλεξες. Δοκίμασε άλλο διάστημα.'
+              }
               tone="warning"
             />
           )}
         </Card>
       ) : map && map.summary.total > 0 ? (
         <Text style={st.hint}>Πάτησε μια ξαπλώστρα για λεπτομέρειες και κράτηση.</Text>
+      ) : null}
+
+      {beach ? (
+        <Button
+          title="Οδηγίες προς το κατάστημα"
+          icon="navigate-outline"
+          variant="ghost"
+          small
+          style={{ marginTop: 12 }}
+          onPress={() => openDirections(beach.ltd, beach.lgd)}
+        />
       ) : null}
     </Screen>
   );

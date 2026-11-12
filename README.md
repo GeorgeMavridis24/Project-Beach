@@ -8,10 +8,12 @@ Full-stack σύστημα όπου οι πελάτες κλείνουν ξαπλ
 
 | Κομμάτι | Τεχνολογία |
 |---|---|
-| Εφαρμογή | React Native, Expo SDK 54, Expo Router, TypeScript, react-native-svg |
+| Εφαρμογή | React Native, Expo SDK 54, Expo Router, TypeScript, react-native-svg, react-native-maps |
+| Χάρτες | Google/Apple Maps στο κινητό, OpenStreetMap (Leaflet) στον browser |
+| Email | SMTP (π.χ. Gmail) με QR code μέσα στο email |
 | Backend | Python 3, FastAPI, Pydantic |
 | Βάση | MySQL 8 / MariaDB (connection pool, transactions) |
-| Ασφάλεια | JWT, bcrypt, ρόλοι user / staff / admin, SecureStore στο κινητό |
+| Ασφάλεια | JWT, bcrypt, ρόλοι user / staff / owner / admin, SecureStore στο κινητό |
 | AI | Claude API (Anthropic) με tool use |
 | Ποιότητα | pytest (40 tests σε πραγματική βάση), Locust, GitHub Actions, Docker |
 
@@ -22,8 +24,11 @@ Full-stack σύστημα όπου οι πελάτες κλείνουν ξαπλ
   ταξινόμηση κατά διαθεσιμότητα, τιμή, όνομα ή **απόσταση** (GPS).
 - **Οπτικός χάρτης ξαπλωστρών**: η σειρά 1 είναι δίπλα στη θάλασσα, χρώματα για ελεύθερη / VIP / κλεισμένη /
   εκτός λειτουργίας, και θέσεις που δεν ταιριάζουν στα φίλτρα εμφανίζονται αχνές.
-- **Κρατήσεις ανά χρονικό διάστημα** (πρωί, απόγευμα, ολοήμερο ή ελεύθερες ώρες ανά μισάωρο). Η ίδια ξαπλώστρα
-  μπορεί να κλειστεί το πρωί από έναν και το απόγευμα από άλλον.
+- **Ωράριο ανά κατάστημα** (π.χ. 08:00–22:00, 09:00–21:00) και **ελεύθερη επιλογή ώρας** άφιξης/αναχώρησης
+  μέσα σε αυτό (κουμπιά ±15' ή πληκτρολόγηση οποιασδήποτε ώρας). Η ίδια ξαπλώστρα μπορεί να κλειστεί το πρωί
+  από έναν και το απόγευμα από άλλον.
+- **Πραγματικός χάρτης** με τα καταστήματα (πινέζες με διαθεσιμότητα), κουμπί **Οδηγίες** (Google Maps).
+- **Email** επιβεβαίωσης με το QR της κράτησης, και ενημέρωση όταν αλλάζει η ώρα ή ακυρώνεται.
 - Τιμή **μισής μέρας** με έκπτωση (έως 6 ώρες: 60% της ημερήσιας τιμής, ρυθμίζεται).
 - «Οι κρατήσεις μου»: επερχόμενες / παλαιότερες / ακυρωμένες, **QR εισόδου**, αλλαγή ώρας, ακύρωση.
 - **AI βοηθός**: «Βρες μου VIP για Σάββατο απόγευμα κάτω από 20€» → ψάχνει, προτείνει θέση, και ο χρήστης
@@ -32,12 +37,17 @@ Full-stack σύστημα όπου οι πελάτες κλείνουν ξαπλ
 **Προσωπικό (staff)**
 - **Check-in με σάρωση QR** (κάμερα) ή πληκτρολόγηση κωδικού, λίστα σημερινών αφίξεων.
 
+**Καταστηματάρχης (owner)** — βλέπει και αλλάζει **μόνο το δικό του** κατάστημα
+- Ωράριο λειτουργίας, όνομα, περιγραφή, θέση στον χάρτη (πατώντας πάνω του).
+- Κρατήσεις, στατιστικά, ξαπλώστρες και check-in του καταστήματός του. Ο περιορισμός ελέγχεται στον server.
+
 **Διαχειριστής (admin)**
 - **Dashboard**: έσοδα, κρατήσεις, πληρότητα, μέση αξία, ακυρώσεις, check-in, γραφήματα ανά μήνα/ημέρα/ημέρα
   εβδομάδας/διάστημα/παραλία και **heatmap δημοφιλών θέσεων**. Κάθε γράφημα έχει και προβολή πίνακα.
 - Κρατήσεις με φίλτρα (πελάτης, παραλία, κατάσταση, ημερομηνία), ακύρωση και αλλαγή ώρας.
 - Γεννήτρια πλέγματος ξαπλωστρών και επεξεργασία κάθε θέσης (τιμή, τύπος, εκτός λειτουργίας).
-- Παραλίες (προσθήκη, επεξεργασία, διαγραφή, συντεταγμένες από GPS) και χρήστες (αναζήτηση, αλλαγή ρόλου).
+- Καταστήματα (προσθήκη, επεξεργασία, διαγραφή, ωράριο, θέση στον χάρτη, **ανάθεση καταστηματάρχη**) και χρήστες
+  (αναζήτηση, αλλαγή ρόλου).
 
 ## Αρχιτεκτονική
 
@@ -67,10 +77,12 @@ backend/
     services/          λογική (κοινή για REST και AI βοηθό)
     routers/           REST endpoints
     assistant.py       AI βοηθός (Claude tool use)
+    mailer.py          email κρατήσεων (SMTP ή αρχεία .eml στο outbox/)
   tests/               pytest
   scripts/             create_admin.py, seed_demo.py
   loadtest/            Locust
-database/schema.sql    σχήμα βάσης
+database/schema.sql    σχήμα βάσης (νέα εγκατάσταση)
+database/migrations/   αναβάθμιση υπάρχουσας βάσης χωρίς απώλεια δεδομένων
 SmartBeachApp/         εφαρμογή Expo
 docs/axiologisi.md     υλικό για το κεφάλαιο αξιολόγησης (tests, load test, SUS)
 ```
@@ -155,8 +167,9 @@ pip install -r requirements.txt
 python -m scripts.create_admin --email admin@smartbeach.gr --name Admin
 ```
 
-(Προαιρετικά) δοκιμαστικά δεδομένα για demo: ξαπλώστρες, 80 πελάτες και ~11.000 κρατήσεις σε μία σεζόν,
-με κωδικό `demo1234` για όλους τους demo λογαριασμούς:
+(Προαιρετικά) δοκιμαστικά δεδομένα για demo: ξαπλώστρες, 80 πελάτες, ένας καταστηματάρχης ανά κατάστημα και
+~11.000 κρατήσεις σε μία σεζόν. Κωδικός `demo1234` για όλους: `admin@smartbeach.gr`, `owner1@smartbeach.gr`
+(Oia), `owner2@smartbeach.gr` (Fratelli), `owner3@smartbeach.gr` (Accordo), `staff@smartbeach.gr`, `customer1@demo.gr`.
 
 ```bash
 python -m scripts.seed_demo
@@ -169,6 +182,30 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Τεκμηρίωση του API (Swagger): http://localhost:8000/docs
+
+### Email κρατήσεων
+
+Χωρίς ρυθμίσεις, τα email **δεν στέλνονται** αλλά αποθηκεύονται ως αρχεία `.eml` στον φάκελο `backend/outbox/`
+(ανοίγουν με διπλό κλικ στο Outlook). Για πραγματική αποστολή με Gmail:
+
+1. Στον λογαριασμό Google ενεργοποίησε την **Επαλήθευση σε 2 βήματα**.
+2. Στο https://myaccount.google.com/apppasswords φτιάξε **Κωδικό εφαρμογής** (16 γράμματα).
+3. Στο `backend/.env` συμπλήρωσε:
+   ```
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=to-email-sou@gmail.com
+   SMTP_PASSWORD=ο-κωδικός-εφαρμογής-χωρίς-κενά
+   MAIL_FROM=SmartBeach <to-email-sou@gmail.com>
+   ```
+4. Επανεκκίνηση του server. Το email πηγαίνει στη διεύθυνση του λογαριασμού που έκανε την κράτηση, οπότε
+   κάνε εγγραφή στην εφαρμογή με το πραγματικό σου email για να το δεις.
+
+### Αναβάθμιση από παλιότερη έκδοση της βάσης
+
+Αν έχεις ήδη τη βάση και δεν θέλεις να χαθούν δεδομένα, τρέξε **μία φορά** στο MySQL Workbench το
+`database/migrations/002_orario_kai_katastimatarxes.sql`. Αλλιώς ξανατρέξε το `database/schema.sql` και το
+`python -m scripts.seed_demo`.
 
 ### 3. Εφαρμογή
 
@@ -217,6 +254,7 @@ python -m pytest
 | GET | `/bookings/me?scope=upcoming\|past\|cancelled` | πελάτης |
 | PUT / POST | `/bookings/{id}/time`, `/bookings/{id}/cancel` | πελάτης |
 | POST | `/assistant/chat` | πελάτης |
-| POST | `/staff/checkin`, GET `/staff/bookings` | staff, admin |
-| GET | `/admin/stats`, `/admin/bookings`, `/admin/users` | admin |
-| POST / PUT / DELETE | `/admin/beaches…`, `/admin/sunbeds/{id}` | admin |
+| POST | `/staff/checkin`, GET `/staff/bookings` | staff, owner (δικό του), admin |
+| GET | `/admin/stats`, `/admin/bookings` | owner (δικό του), admin |
+| PUT | `/admin/beaches/{id}` (ωράριο, στοιχεία), `/admin/sunbeds/{id}` | owner (δικό του), admin |
+| POST / DELETE | `/admin/beaches`, GET `/admin/users` | admin |

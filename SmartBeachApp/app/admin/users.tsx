@@ -7,9 +7,9 @@ import { C } from '@/constants/brand';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { euro } from '@/lib/dates';
+import { ROLE_LABEL } from '@/lib/roles';
 import type { AdminUser, Role } from '@/lib/types';
 
-const ROLE_LABEL: Record<Role, string> = { user: 'Πελάτης', staff: 'Προσωπικό', admin: 'Διαχειριστής' };
 
 export default function AdminUsersScreen() {
   const { user: me } = useAuth();
@@ -82,12 +82,18 @@ export default function AdminUsersScreen() {
           <Card key={u.id}>
             <View style={st.head}>
               <Text style={st.name}>{u.username}</Text>
-              <Badge text={ROLE_LABEL[u.role]} tone={u.role === 'admin' ? 'danger' : u.role === 'staff' ? 'warning' : 'neutral'} />
+              <Badge
+                text={ROLE_LABEL[u.role]}
+                tone={u.role === 'admin' ? 'danger' : u.role === 'owner' ? 'primary' : u.role === 'staff' ? 'warning' : 'neutral'}
+              />
             </View>
             <Text style={st.meta}>{u.email}</Text>
             <Text style={st.meta}>
               {u.bookings} κρατήσεις · {euro(u.spent)}
             </Text>
+            {u.role === 'owner' ? (
+              <Text style={st.meta}>Κατάστημα: {u.owns ?? 'δεν έχει ανατεθεί (ορίζεται από τα Καταστήματα)'}</Text>
+            ) : null}
             {u.id !== me?.id ? (
               <View style={{ marginTop: 10 }}>
                 <Segmented

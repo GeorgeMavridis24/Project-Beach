@@ -1,7 +1,7 @@
 """Κρυπτογράφηση κωδικών (bcrypt), JWT tokens και έλεγχος ρόλων."""
 
 from datetime import datetime, timedelta, timezone
-from typing import Callable
+from typing import Callable, Optional
 
 import bcrypt
 import jwt
@@ -70,4 +70,20 @@ def require_roles(*roles: str) -> Callable[..., dict]:
 
 
 require_admin = require_roles("admin")
-require_staff = require_roles("staff", "admin")
+# Διαχείριση καταστήματος: ο admin για όλα, ο καταστηματάρχης για τα δικά του.
+require_manager = require_roles("admin", "owner")
+# Check-in στην είσοδο: προσωπικό, καταστηματάρχες, admin.
+require_staff = require_roles("staff", "owner", "admin")
+
+
+def managed_beach_ids(user: dict) -> Optional[list[int]]:
+    """None = όλα τα καταστήματα (admin / staff), αλλιώς τα καταστήματα του καταστηματάρχη."""
+    if user["role"] != "owner":
+        return None
+    return [r["id"] for r in db.fetch_all("SELECT id FROM beaches WHERE owner_id = %s ORDER BY id", (user["id"],))]
+
+
+def ensure_can_manage(user: dict, beach_id: int) -> None:
+    allowed = managed_beach_ids(user)
+    if allowed is not None and beach_id not in allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Δεν είναι δικό σου κατάστημα.")
