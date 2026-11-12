@@ -243,7 +243,7 @@ def list_all(
 
 
 def check_in(code: str, require_today: bool) -> dict:
-    code = code.strip().upper()
+    code = "".join(code.split()).upper()  # δέχεται και "a1b2 c3d4 e5f6"
     with db.transaction() as cur:
         cur.execute(
             "SELECT id, res_date, status, checked_in_at FROM reserves WHERE checkin_code = %s FOR UPDATE",

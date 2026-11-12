@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "SmartBeachApp",
+    "name": "SmartBeach",
     "slug": "SmartBeachApp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "smartbeachapp",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
@@ -37,6 +37,20 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Η κάμερα χρειάζεται για τη σάρωση του QR κράτησης στην είσοδο.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Η τοποθεσία χρησιμοποιείται για να δεις τις πιο κοντινές παραλίες."
         }
       ]
     ],

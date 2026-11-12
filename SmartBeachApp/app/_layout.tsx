@@ -1,24 +1,47 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import React from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { C } from '@/constants/brand';
+import { AuthProvider, useAuth } from '@/lib/auth';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+function RootNavigator() {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
+        <ActivityIndicator size="large" color={C.primary} />
+      </View>
+    );
+  }
+  const isStaff = user?.role === 'admin' || user?.role === 'staff';
+  // Protected routes: χωρίς σύνδεση φαίνεται μόνο το login, και η "Διαχείριση"
+  // υπάρχει μόνο για προσωπικό/διαχειριστές.
+  return (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}>
+      <Stack.Screen name="index" />
+      <Stack.Protected guard={!!user}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Protected guard={isStaff}>
+          <Stack.Screen name="admin" />
+        </Stack.Protected>
+      </Stack.Protected>
+      <Stack.Protected guard={!user}>
+        <Stack.Screen name="login" />
+      </Stack.Protected>
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <RootNavigator />
+        <StatusBar style="dark" />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

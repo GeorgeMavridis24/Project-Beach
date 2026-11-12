@@ -25,7 +25,8 @@ def test_checkin_flow(client, grid, make_user, freeze_now):
 
     freeze_now(datetime(2027, 6, 15, 8, 30))
     assert client.post("/staff/checkin", json={"code": "NOPE123456"}, headers=staff["headers"]).status_code == 404
-    r = client.post("/staff/checkin", json={"code": booking["checkin_code"].lower()}, headers=staff["headers"])
+    spaced = " ".join(booking["checkin_code"][i : i + 4] for i in range(0, 12, 4)).lower()  # όπως φαίνεται στην οθόνη
+    r = client.post("/staff/checkin", json={"code": spaced}, headers=staff["headers"])
     assert r.status_code == 200 and r.json()["checked_in"] is True
     assert r.json()["username"] == customer["username"]
     again = client.post("/staff/checkin", json={"code": booking["checkin_code"]}, headers=staff["headers"])
