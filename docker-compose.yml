@@ -1,0 +1,37 @@
+# Όλο το backend με μία εντολή:   docker compose up --build
+# API: http://localhost:8000/docs   ·   MySQL: localhost:3307 (root / smartbeach)
+# Δοκιμαστικά δεδομένα:           docker compose exec api python -m scripts.seed_demo
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: smartbeach
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-psmartbeach"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build: ./backend
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: smartbeach
+      DB_NAME: smartbeach
+      SECRET_KEY: ${SECRET_KEY:-change-me-before-deploying}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CHECKIN_REQUIRE_TODAY: ${CHECKIN_REQUIRE_TODAY:-true}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dbdata:
