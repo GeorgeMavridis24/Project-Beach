@@ -1,0 +1,2 @@
+# Τα .bat χρειάζονται τέλη γραμμής Windows (CRLF)
+*.bat -text
