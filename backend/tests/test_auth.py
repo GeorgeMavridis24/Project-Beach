@@ -1,32 +1,54 @@
 """Ασφάλεια: εγγραφή, login, ρόλοι."""
 
 
-def test_register_cannot_choose_role(client, sql):
+def latest_code(outbox, email):
+    """Ο τελευταίος κωδικός που "στάλθηκε" στο email (από τα αρχεία του outbox)."""
+    import email as email_lib
+    import re
+    from email import policy
+
+    for f in sorted(outbox.glob("*.eml"), reverse=True):
+        msg = email_lib.message_from_bytes(f.read_bytes(), policy=policy.default)
+        if msg["To"] == email and "SmartBeach" in msg["Subject"]:
+            return re.match(r"(\d{6})", msg["Subject"]).group(1)
+    raise AssertionError(f"no code for {email}")
+
+
+def test_register_cannot_choose_role(client, sql, outbox):
     r = client.post(
         "/auth/register",
         json={"username": "Hacker", "email": "h@test.gr", "password": "secret123", "role": "admin"},
     )
     assert r.status_code == 201
-    assert r.json()["role"] == "user"
-    assert sql("SELECT role FROM users WHERE email = 'h@test.gr'")[0]["role"] == "user"
+    assert r.json()["role"] == "user" and r.json()["verification_required"] is True
+    assert sql("SELECT role, email_verified FROM users WHERE email = 'h@test.gr'")[0] == {"role": "user", "email_verified": 0}
 
 
-def test_register_validation_and_duplicates(client):
+def test_register_validation_and_duplicates(client, outbox):
     assert client.post("/auth/register", json={"username": "A", "email": "bad", "password": "x"}).status_code == 422
     body = {"username": "Maria", "email": "Maria@Test.gr", "password": "secret123"}
     assert client.post("/auth/register", json=body).status_code == 201
-    r = client.post("/auth/register", json={**body, "email": "maria@test.gr"})
-    assert r.status_code == 409
+    # ανεπιβεβαίωτη εγγραφή: μπορεί να ξαναγίνει (νέος κωδικός)
+    assert client.post("/auth/register", json={**body, "email": "maria@test.gr"}).status_code == 201
+    code = latest_code(outbox, "maria@test.gr")
+    assert client.post("/auth/verify-email", json={"email": "maria@test.gr", "code": code}).status_code == 200
+    # επιβεβαιωμένη: όχι δεύτερος λογαριασμός με το ίδιο email
+    assert client.post("/auth/register", json={**body, "email": "maria@test.gr"}).status_code == 409
 
 
-def test_login_and_me(client):
+def test_login_and_me(client, outbox):
     client.post("/auth/register", json={"username": "Nikos", "email": "nikos@test.gr", "password": "secret123"})
     assert client.post("/auth/login", json={"email": "nikos@test.gr", "password": "wrong!!"}).status_code == 401
+    # πριν την επιβεβαίωση δεν δίνεται token
     r = client.post("/auth/login", json={"email": "NIKOS@test.gr", "password": "secret123"})
+    assert r.status_code == 200 and r.json()["verification_required"] is True and "access_token" not in r.json()
+    r = client.post("/auth/verify-email", json={"email": "nikos@test.gr", "code": latest_code(outbox, "nikos@test.gr")})
     assert r.status_code == 200
     token = r.json()["access_token"]
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.json()["username"] == "Nikos" and "password" not in me.json()
+    r = client.post("/auth/login", json={"email": "nikos@test.gr", "password": "secret123"})
+    assert "access_token" in r.json()
 
 
 def test_protected_routes(client, make_user):

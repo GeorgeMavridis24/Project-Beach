@@ -38,7 +38,7 @@ def ask(question: str, default: str = "") -> str:
 
 
 def install_python_packages() -> None:
-    title("1/6  Εγκατάσταση πακέτων Python")
+    title("1/7  Εγκατάσταση πακέτων Python")
     result = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(BACKEND / "requirements.txt")])
     if result.returncode != 0:
         sys.exit("Αποτυχία στο pip install. Στείλε μου το μήνυμα που εμφανίστηκε πιο πάνω.")
@@ -58,7 +58,7 @@ def try_connect(port: int, password: str):
 
 
 def find_mysql() -> tuple[int, str]:
-    title("2/6  Αναζήτηση MySQL")
+    title("2/7  Αναζήτηση MySQL")
     errors = {}
     for port in (3306, 3307):
         conn = try_connect(port, "")
@@ -93,7 +93,7 @@ def find_mysql() -> tuple[int, str]:
 
 
 def write_env(port: int, password: str) -> None:
-    title("3/6  Ρυθμίσεις (backend/.env)")
+    title("3/7  Ρυθμίσεις (backend/.env)")
     current = read_env()
     updates = {"DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_USER": "root", "DB_PASSWORD": password, "DB_NAME": "smartbeach"}
     if current.get("SECRET_KEY", "change-me") in ("", "change-me"):
@@ -104,7 +104,7 @@ def write_env(port: int, password: str) -> None:
 
 
 def create_database(port: int, password: str) -> None:
-    title("4/6  Δημιουργία βάσης δεδομένων")
+    title("4/7  Δημιουργία βάσης δεδομένων")
     conn = try_connect(port, password)
     cur = conn.cursor()
     cur.execute("SHOW DATABASES LIKE 'smartbeach'")
@@ -124,12 +124,23 @@ def create_database(port: int, password: str) -> None:
 
 
 def seed() -> None:
-    title("5/6  Δοκιμαστικά δεδομένα")
+    title("5/7  Δοκιμαστικά δεδομένα")
     subprocess.run([sys.executable, "-m", "scripts.seed_demo"], cwd=BACKEND, check=False)
 
 
+def create_own_admin() -> None:
+    title("6/7  Ο δικός σου λογαριασμός διαχειριστή")
+    print("Εκτός από τους δοκιμαστικούς λογαριασμούς, φτιάξε τον δικό σου διαχειριστή.")
+    if ask("Να τον φτιάξουμε τώρα; (ν/ο) [ν]: ", "ν").lower() not in ("ν", "n", "y", "ναι", "yes"):
+        print("Παραλείφθηκε. Μπορείς να το κάνεις αργότερα με το 4-NEOS-DIAXEIRISTIS.bat.")
+        return
+    result = subprocess.run([sys.executable, "-m", "scripts.create_admin"], cwd=BACKEND)
+    if result.returncode != 0:
+        print("Δεν δημιουργήθηκε. Δοκίμασε ξανά με το 4-NEOS-DIAXEIRISTIS.bat.")
+
+
 def install_app() -> None:
-    title("6/6  Πακέτα εφαρμογής (npm install) - μπορεί να πάρει λίγα λεπτά")
+    title("7/7  Πακέτα εφαρμογής (npm install) - μπορεί να πάρει λίγα λεπτά")
     if not shutil.which("npm"):
         print("Δεν βρέθηκε το Node.js. Εγκατάστησέ το από https://nodejs.org (LTS) και ξανάνοιξε το 1-EGKATASTASI.bat.")
         sys.exit(1)
@@ -146,6 +157,7 @@ def main() -> None:
     write_env(port, password)
     create_database(port, password)
     seed()
+    create_own_admin()
     install_app()
     if ask("\nΘέλεις να ρυθμίσεις τώρα την αποστολή email (Gmail); (ν/ο) [ο]: ", "ο").lower() in ("ν", "n", "y", "ναι", "yes"):
         import setup_email
@@ -158,7 +170,8 @@ def main() -> None:
     print(
         "Τώρα κάνε διπλό κλικ στο 2-EKKINISI.bat.\n"
         "Για αποστολή email αργότερα: διπλό κλικ στο 3-RYTHMISI-EMAIL.bat.\n\n"
-        "Λογαριασμοί (κωδικός demo1234):\n"
+        "Ο δικός σου διαχειριστής: με το email και τον κωδικό που έγραψες στο βήμα 6.\n\n"
+        "Δοκιμαστικοί λογαριασμοί (κωδικός demo1234):\n"
         "  Πελάτης:          customer1@demo.gr\n"
         "  Καταστηματάρχης:  owner1@smartbeach.gr\n"
         "  Διαχειριστής:     admin@smartbeach.gr\n"

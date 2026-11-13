@@ -3,7 +3,7 @@ import { Href, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Badge, Button, Card, Screen, SectionTitle } from '@/components/ui';
+import { Badge, Banner, Button, Card, Field, Screen, SectionTitle } from '@/components/ui';
 import { C } from '@/constants/brand';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -36,6 +36,32 @@ export default function AccountScreen() {
   const { user, logout, refreshUser } = useAuth();
   const [request, setRequest] = useState<PartnerRequest | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [securityBusy, setSecurityBusy] = useState(false);
+  const [securityMsg, setSecurityMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const twoFactor = !!user?.two_factor_enabled;
+
+  const toggleTwoFactor = async () => {
+    setSecurityBusy(true);
+    setSecurityMsg(null);
+    try {
+      await api('/auth/2fa', { method: 'POST', body: { enabled: !twoFactor, password } });
+      await refreshUser();
+      setSecurityMsg({
+        tone: 'success',
+        text: !twoFactor
+          ? 'Ενεργοποιήθηκε! Από την επόμενη σύνδεση θα σου ζητάμε και κωδικό από το email.'
+          : 'Απενεργοποιήθηκε ο έλεγχος σε 2 βήματα.',
+      });
+      setSecurityOpen(false);
+      setPassword('');
+    } catch (e: any) {
+      setSecurityMsg({ tone: 'danger', text: e.message });
+    } finally {
+      setSecurityBusy(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -119,6 +145,52 @@ export default function AccountScreen() {
           )}
         </>
       ) : null}
+
+      <SectionTitle>Ασφάλεια</SectionTitle>
+      <Card>
+        <View style={st.reqHead}>
+          <Text style={st.reqTitle}>Έλεγχος σε 2 βήματα</Text>
+          <Badge text={twoFactor ? 'Ενεργός' : 'Ανενεργός'} tone={twoFactor ? 'success' : 'neutral'} icon={twoFactor ? 'shield-checkmark' : 'shield-outline'} />
+        </View>
+        <Text style={st.ctaText}>
+          Σε κάθε σύνδεση, εκτός από τον κωδικό σου, θα ζητάμε και έναν 6ψήφιο κωδικό που στέλνουμε στο {user?.email}.
+        </Text>
+        {securityMsg ? <Banner text={securityMsg.text} tone={securityMsg.tone} /> : null}
+        {securityOpen ? (
+          <>
+            <Field
+              label="Γράψε τον κωδικό σου για επιβεβαίωση"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoComplete="current-password"
+            />
+            <View style={st.actions}>
+              <Button
+                title={twoFactor ? 'Απενεργοποίηση' : 'Ενεργοποίηση'}
+                small
+                variant={twoFactor ? 'danger' : 'primary'}
+                onPress={toggleTwoFactor}
+                loading={securityBusy}
+                disabled={!password}
+              />
+              <Button title="Άκυρο" small variant="ghost" onPress={() => setSecurityOpen(false)} />
+            </View>
+          </>
+        ) : (
+          <Button
+            title={twoFactor ? 'Απενεργοποίηση' : 'Ενεργοποίηση'}
+            icon={twoFactor ? 'shield-outline' : 'shield-checkmark-outline'}
+            small
+            variant="secondary"
+            onPress={() => {
+              setSecurityOpen(true);
+              setSecurityMsg(null);
+            }}
+            style={{ alignSelf: 'flex-start' }}
+          />
+        )}
+      </Card>
 
       {items.length ? <SectionTitle>Διαχείριση</SectionTitle> : null}
       {items.map((i) => (

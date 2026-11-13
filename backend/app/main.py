@@ -15,6 +15,7 @@ from .booking_rules import BookingRuleError
 from .config import settings
 from .errors import ConflictError, NotFoundError
 from .routers import admin, assistant, auth, beaches, bookings, partners, staff
+from .services.otp import InvalidCodeError
 
 logging.basicConfig(level=logging.INFO)
 
@@ -35,6 +36,11 @@ app.add_middleware(
 
 @app.exception_handler(BookingRuleError)
 def _rule_error(_: Request, exc: BookingRuleError):
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(InvalidCodeError)
+def _bad_code(_: Request, exc: InvalidCodeError):
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 

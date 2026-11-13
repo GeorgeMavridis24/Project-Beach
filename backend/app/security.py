@@ -31,6 +31,26 @@ def create_access_token(user_id: int, role: str) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
 
+CHALLENGE_MINUTES = 10
+
+
+def create_challenge_token(user_id: int) -> str:
+    """Προσωρινό token για το 2ο βήμα της σύνδεσης (ΔΕΝ δίνει πρόσβαση στο API)."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=CHALLENGE_MINUTES)
+    payload = {"sub": str(user_id), "purpose": "login2fa", "exp": expire}
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_challenge_token(token: str) -> Optional[int]:
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("purpose") != "login2fa":
+            return None
+        return int(payload["sub"])
+    except (jwt.InvalidTokenError, KeyError, ValueError):
+        return None
+
+
 def _unauthorized(detail: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -48,15 +68,21 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
         payload = jwt.decode(
             credentials.credentials, settings.secret_key, algorithms=[settings.jwt_algorithm]
         )
+        if payload.get("purpose"):  # token 2ου βήματος: δεν είναι token πρόσβασης
+            raise jwt.InvalidTokenError("not an access token")
         user_id = int(payload["sub"])
     except jwt.ExpiredSignatureError:
         raise _unauthorized("Η σύνδεση έληξε. Κάνε login ξανά.")
     except (jwt.InvalidTokenError, KeyError, ValueError):
         raise _unauthorized("Μη έγκυρο token.")
 
-    user = db.fetch_one("SELECT id, username, email, role FROM users WHERE id = %s", (user_id,))
+    user = db.fetch_one(
+        "SELECT id, username, email, role, two_factor_enabled FROM users WHERE id = %s AND email_verified = 1",
+        (user_id,),
+    )
     if user is None:
         raise _unauthorized("Ο λογαριασμός δεν υπάρχει πλέον.")
+    user["two_factor_enabled"] = bool(user["two_factor_enabled"])
     return user
 
 

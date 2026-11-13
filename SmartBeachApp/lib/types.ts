@@ -1,7 +1,7 @@
 export type Role = 'user' | 'staff' | 'owner' | 'admin';
 export type SunbedType = 'normal' | 'premium';
 
-export type User = { id: number; username: string; email: string; role: Role };
+export type User = { id: number; username: string; email: string; role: Role; two_factor_enabled?: boolean };
 
 export type AppConfig = {
   season_start_month: number;

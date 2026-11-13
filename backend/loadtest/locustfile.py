@@ -19,7 +19,6 @@
 """
 
 import random
-import uuid
 from datetime import date, timedelta
 
 from locust import HttpUser, between, task
@@ -31,9 +30,10 @@ class Customer(HttpUser):
     wait_time = between(0.5, 2)
 
     def on_start(self):
-        email = f"load-{uuid.uuid4().hex[:10]}@test.gr"
-        self.client.post("/auth/register", json={"username": "Load", "email": email, "password": "secret123"})
-        r = self.client.post("/auth/login", json={"email": email, "password": "secret123"})
+        # Οι εγγραφές θέλουν κωδικό από email, οπότε χρησιμοποιούμε τους δοκιμαστικούς
+        # λογαριασμούς του seed_demo (customer1..80@demo.gr, κωδικός demo1234).
+        email = f"customer{random.randint(1, 80)}@demo.gr"
+        r = self.client.post("/auth/login", json={"email": email, "password": "demo1234"})
         self.headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
         cfg = self.client.get("/config").json()
         first = date.fromisoformat(cfg["first_bookable_date"])

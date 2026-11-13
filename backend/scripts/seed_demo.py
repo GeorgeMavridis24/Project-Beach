@@ -59,7 +59,7 @@ def main() -> None:
         for name, email, role in people:
             if email not in existing:
                 cur.execute(
-                    "INSERT INTO users (username, email, password, role) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO users (username, email, password, role, email_verified) VALUES (%s, %s, %s, %s, 1)",
                     (name, email, pw, role),
                 )
         cur.execute("SELECT id FROM users WHERE role = 'user'")

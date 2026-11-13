@@ -32,12 +32,35 @@ const storage = {
   },
 };
 
+export type Delivery = 'email' | 'server_console';
+
+/** Αποτέλεσμα εγγραφής / σύνδεσης: έτοιμο, ή χρειάζεται κωδικός από το email. */
+export type AuthStep =
+  | { status: 'ok' }
+  | { status: 'verify'; email: string; delivery: Delivery }
+  | { status: '2fa'; challenge: string; emailHint: string; delivery: Delivery };
+
+type TokenResponse = { access_token: string; user: User };
+type LoginResponse = Partial<TokenResponse> & {
+  verification_required?: boolean;
+  two_factor_required?: boolean;
+  email?: string;
+  challenge?: string;
+  email_hint?: string;
+  delivery?: Delivery;
+};
+
 type AuthState = {
   user: User | null;
   config: AppConfig | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<AuthStep>;
+  register: (username: string, email: string, password: string) => Promise<AuthStep>;
+  /** Κωδικός από το email μετά την εγγραφή */
+  verifyEmail: (email: string, code: string) => Promise<void>;
+  /** Κωδικός από το email στη σύνδεση σε 2 βήματα */
+  verifyLogin: (challenge: string, code: string) => Promise<void>;
+  resendCode: (target: { email?: string; challenge?: string }) => Promise<void>;
   logout: () => Promise<void>;
   /** Ξαναδιαβάζει τον χρήστη (π.χ. όταν εγκριθεί και γίνει καταστηματάρχης). */
   refreshUser: () => Promise<void>;
@@ -77,35 +100,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [logout]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await api<{ access_token: string; user: User }>('/auth/login', {
-      method: 'POST',
-      body: { email, password },
-    });
-    setAuthToken(res.access_token);
-    await storage.set(res.access_token);
-    setUser(res.user);
-    if (!config) api<AppConfig>('/config').then(setConfig).catch(() => {});
-  }, [config]);
-
-  const register = useCallback(
-    async (username: string, email: string, password: string) => {
-      await api('/auth/register', { method: 'POST', body: { username, email, password } });
-      await login(email, password);
+  const finish = useCallback(
+    async (res: TokenResponse) => {
+      setAuthToken(res.access_token);
+      await storage.set(res.access_token);
+      setUser(res.user);
+      if (!config) api<AppConfig>('/config').then(setConfig).catch(() => {});
     },
-    [login],
+    [config],
   );
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<AuthStep> => {
+      const res = await api<LoginResponse>('/auth/login', { method: 'POST', body: { email, password } });
+      if (res.verification_required) return { status: 'verify', email: res.email ?? email, delivery: res.delivery ?? 'email' };
+      if (res.two_factor_required) {
+        return { status: '2fa', challenge: res.challenge ?? '', emailHint: res.email_hint ?? '', delivery: res.delivery ?? 'email' };
+      }
+      await finish(res as TokenResponse);
+      return { status: 'ok' };
+    },
+    [finish],
+  );
+
+  const register = useCallback(async (username: string, email: string, password: string): Promise<AuthStep> => {
+    const res = await api<LoginResponse>('/auth/register', { method: 'POST', body: { username, email, password } });
+    return { status: 'verify', email: res.email ?? email, delivery: res.delivery ?? 'email' };
+  }, []);
+
+  const verifyEmail = useCallback(
+    async (email: string, code: string) => {
+      await finish(await api<TokenResponse>('/auth/verify-email', { method: 'POST', body: { email, code } }));
+    },
+    [finish],
+  );
+
+  const verifyLogin = useCallback(
+    async (challenge: string, code: string) => {
+      await finish(await api<TokenResponse>('/auth/login/verify', { method: 'POST', body: { challenge, code } }));
+    },
+    [finish],
+  );
+
+  const resendCode = useCallback(async (target: { email?: string; challenge?: string }) => {
+    await api('/auth/resend-code', { method: 'POST', body: target });
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {
       const me = await api<User>('/auth/me');
-      setUser((cur) => (cur && cur.role === me.role && cur.username === me.username ? cur : me));
+      setUser((cur) =>
+        cur && cur.role === me.role && cur.username === me.username && cur.two_factor_enabled === me.two_factor_enabled ? cur : me,
+      );
     } catch {}
   }, []);
 
   const value = useMemo(
-    () => ({ user, config, loading, login, register, logout, refreshUser }),
-    [user, config, loading, login, register, logout, refreshUser],
+    () => ({ user, config, loading, login, register, verifyEmail, verifyLogin, resendCode, logout, refreshUser }),
+    [user, config, loading, login, register, verifyEmail, verifyLogin, resendCode, logout, refreshUser],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

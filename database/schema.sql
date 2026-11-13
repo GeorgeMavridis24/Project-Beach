@@ -18,7 +18,29 @@ CREATE TABLE users (
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     role ENUM('user', 'staff', 'owner', 'admin') NOT NULL DEFAULT 'user',
+    -- Επαλήθευση email στην εγγραφή (κωδικός 6 ψηφίων) και προαιρετικός
+    -- έλεγχος σε 2 βήματα στη σύνδεση (κωδικός στο email σε κάθε login).
+    email_verified TINYINT(1) NOT NULL DEFAULT 0,
+    two_factor_enabled TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- Κωδικοί μίας χρήσης (6 ψηφία) που στέλνονται με email.
+-- Αποθηκεύεται ΜΟΝΟ το hash του κωδικού. Λήγουν σε 10 λεπτά και
+-- ακυρώνονται μετά από 5 λάθος προσπάθειες.
+-- ---------------------------------------------------------------------
+CREATE TABLE auth_codes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    purpose ENUM('verify_email', 'login') NOT NULL,
+    code_hash CHAR(64) NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME NULL DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    KEY idx_user_purpose (user_id, purpose)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------

@@ -152,3 +152,28 @@ class BookingEmailIn(BaseModel):
     """Αποστολή κράτησης σε email. Αν λείπει το `to`, πάει στο email του χρήστη."""
 
     to: Optional[str] = Field(default=None, pattern=EMAIL_PATTERN, max_length=100)
+
+
+CODE_PATTERN = r"^\s*\d{6}\s*$"
+
+
+class VerifyEmailIn(BaseModel):
+    email: str = Field(max_length=100)
+    code: str = Field(pattern=CODE_PATTERN)
+
+
+class ResendCodeIn(BaseModel):
+    """Νέος κωδικός: με email (επαλήθευση εγγραφής) ή με challenge (σύνδεση 2 βημάτων)."""
+
+    email: Optional[str] = Field(default=None, max_length=100)
+    challenge: Optional[str] = Field(default=None, max_length=2000)
+
+
+class LoginVerifyIn(BaseModel):
+    challenge: str = Field(max_length=2000)
+    code: str = Field(pattern=CODE_PATTERN)
+
+
+class TwoFactorIn(BaseModel):
+    enabled: bool
+    password: str = Field(min_length=1, max_length=72)

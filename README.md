@@ -13,11 +13,17 @@ Full-stack σύστημα όπου οι πελάτες κλείνουν ξαπλ
 | Email | SMTP (π.χ. Gmail) με QR code μέσα στο email |
 | Backend | Python 3, FastAPI, Pydantic |
 | Βάση | MySQL 8 / MariaDB (connection pool, transactions) |
-| Ασφάλεια | JWT, bcrypt, ρόλοι user / staff / owner / admin, SecureStore στο κινητό |
+| Ασφάλεια | JWT, bcrypt, επαλήθευση email με κωδικό, προαιρετικός έλεγχος σε 2 βήματα, ρόλοι user / staff / owner / admin, SecureStore στο κινητό |
 | AI | Claude API (Anthropic) με tool use |
 | Ποιότητα | pytest (40 tests σε πραγματική βάση), Locust, GitHub Actions, Docker |
 
 ## Λειτουργίες
+
+**Λογαριασμός & ασφάλεια**
+- **Επαλήθευση email στην εγγραφή:** στέλνεται κωδικός 6 ψηφίων και ο λογαριασμός ενεργοποιείται μόνο με αυτόν.
+- **Έλεγχος σε 2 βήματα (2FA)** στη σύνδεση, προαιρετικά από το Προφίλ: κωδικός πρόσβασης + κωδικός από το email.
+- Οι κωδικοί αποθηκεύονται μόνο ως HMAC-SHA256, λήγουν σε 10 λεπτά, ακυρώνονται μετά από 5 λάθη και έχουν όριο
+  αποστολών. Χωρίς ρυθμισμένο email, ο κωδικός εμφανίζεται στο παράθυρο του server (για δοκιμές/παρουσίαση).
 
 **Πελάτης**
 - Αναζήτηση παραλιών με **φίλτρα**: ημερομηνία, ώρες, τύπος (κανονική/VIP), μέγιστη τιμή, μόνο διαθέσιμες,
@@ -136,7 +142,9 @@ docs/axiologisi.md     υλικό για το κεφάλαιο αξιολόγη�
    δεδομένα. Χρειάζεται μόνο μία φορά.
 5. Διπλό κλικ στο **`2-EKKINISI.bat`** κάθε φορά που θες να δουλέψεις. Ανοίγει τον server και την εφαρμογή
    (στον browser· για κινητό σκάναρε το QR με το Expo Go).
-6. Για να φτάνουν **πραγματικά** τα email (κρατήσεις, αιτήσεις): διπλό κλικ στο **`3-RYTHMISI-EMAIL.bat`**.
+   Στο βήμα 6 σε ρωτάει όνομα, email και κωδικό για τον **δικό σου λογαριασμό διαχειριστή** (ο κωδικός δεν
+   αποθηκεύεται πουθενά εκτός από τη βάση, ως hash). Αργότερα: **`4-NEOS-DIAXEIRISTIS.bat`**.
+6. Για να φτάνουν **πραγματικά** τα email (κωδικοί, κρατήσεις, αιτήσεις): διπλό κλικ στο **`3-RYTHMISI-EMAIL.bat`**.
    Σε καθοδηγεί να φτιάξεις «Κωδικό εφαρμογής» Gmail, στέλνει δοκιμαστικό email και αποθηκεύει τις ρυθμίσεις.
 
 Αν η θύρα 3306 είναι πιασμένη από άλλη MySQL και η XAMPP δεν ξεκινά: στη XAMPP, MySQL → Config → `my.ini`,
@@ -227,8 +235,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### Αναβάθμιση από παλιότερη έκδοση της βάσης
 
 Αν έχεις ήδη τη βάση και δεν θέλεις να χαθούν δεδομένα, τρέξε **μία φορά** στο MySQL Workbench, με τη σειρά,
-όσα από τα `database/migrations/002_orario_kai_katastimatarxes.sql` και `003_aitiseis_synergaton.sql` δεν έχεις
-ήδη τρέξει. Αλλιώς ξανατρέξε το `database/schema.sql` και το
+όσα από τα `database/migrations/002_orario_kai_katastimatarxes.sql`, `003_aitiseis_synergaton.sql` και
+`004_epalitheysi_2fa.sql` δεν έχεις ήδη τρέξει. Αλλιώς ξανατρέξε το `database/schema.sql` και το
 `python -m scripts.seed_demo`.
 
 ### 3. Εφαρμογή
@@ -271,7 +279,8 @@ python -m pytest
 
 | Μέθοδος | Διαδρομή | Ποιος |
 |---|---|---|
-| POST | `/auth/register`, `/auth/login` | όλοι |
+| POST | `/auth/register`, `/auth/verify-email`, `/auth/resend-code`, `/auth/login`, `/auth/login/verify` | όλοι |
+| POST | `/auth/2fa` (ενεργοποίηση / απενεργοποίηση ελέγχου σε 2 βήματα) | συνδεδεμένοι |
 | GET | `/beaches?date=&start_time=&end_time=&type=&max_price=&available_only=&sort=&lat=&lon=` | όλοι |
 | GET | `/beaches/{id}/sunbeds?date=&start_time=&end_time=` | όλοι |
 | POST | `/bookings` | πελάτης |

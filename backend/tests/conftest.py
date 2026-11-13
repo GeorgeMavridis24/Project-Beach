@@ -87,7 +87,7 @@ def clean(sql):
 
     booking_router._sent.clear()  # όριο αποστολών email ανά χρήστη
     sql("SET FOREIGN_KEY_CHECKS = 0")
-    for table in ("partner_messages", "partner_requests", "reserves", "sunbeds", "users"):
+    for table in ("auth_codes", "partner_messages", "partner_requests", "reserves", "sunbeds", "users"):
         sql(f"TRUNCATE TABLE {table}")
     sql("SET FOREIGN_KEY_CHECKS = 1")
     yield
@@ -123,7 +123,7 @@ def make_user(sql, client):
         username = username or f"{role}{counter['n']}"
         email = f"{username}@test.gr"
         user_id = sql(
-            "INSERT INTO users (username, email, password, role) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO users (username, email, password, role, email_verified) VALUES (%s, %s, %s, %s, 1)",
             (username, email, hash_password("secret123"), role),
         )
         r = client.post("/auth/login", json={"email": email, "password": "secret123"})

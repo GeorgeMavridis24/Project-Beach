@@ -167,6 +167,45 @@ def send_simple_email(to: str, subject: str, heading: str, paragraphs: list[str]
         log.exception("Αποτυχία αποστολής email '%s'", subject)
 
 
+CODE_TEXT = {
+    "verify_email": ("Επιβεβαίωση email", "Γράψε αυτόν τον κωδικό στην εφαρμογή για να ενεργοποιηθεί ο λογαριασμός σου."),
+    "login": ("Κωδικός σύνδεσης", "Κάποιος (ελπίζουμε εσύ!) συνδέεται στον λογαριασμό σου. Γράψε αυτόν τον κωδικό στην εφαρμογή."),
+}
+
+
+def send_code_email(to: str, username: str, code: str, purpose: str) -> None:
+    """Κωδικός μίας χρήσης. Χωρίς SMTP εμφανίζεται ΚΑΙ στο παράθυρο του server,
+    ώστε η εφαρμογή να δουλεύει και χωρίς ρυθμισμένο email (π.χ. σε παρουσίαση)."""
+    heading, text = CODE_TEXT[purpose]
+    if not settings.smtp_host:
+        print(
+            "\n" + "=" * 56
+            + f"\n  {heading.upper()} για {to}\n  ΚΩΔΙΚΟΣ: {code}\n"
+            + "  (δεν έχει ρυθμιστεί email - δες 3-RYTHMISI-EMAIL.bat)\n" + "=" * 56,
+            flush=True,
+        )
+    if not settings.mail_enabled:
+        return
+    msg = EmailMessage()
+    msg["Subject"] = f"{code} - {heading} SmartBeach"
+    msg["From"] = settings.mail_from
+    msg["To"] = to
+    msg.set_content(f"Γεια σου {username},\n\n{text}\n\nΚωδικός: {code}\n\nΙσχύει για 10 λεπτά. Αν δεν το ζήτησες εσύ, αγνόησέ το.")
+    inner = (
+        f'<p style="font-size:16px;margin:0 0 6px">Γεια σου {html.escape(username)},</p>'
+        f'<p style="font-size:15px;color:#3c3b38;margin:0 0 16px">{html.escape(text)}</p>'
+        f'<div style="font-size:34px;font-weight:800;letter-spacing:8px;text-align:center;background:#f6f4ef;'
+        f'border-radius:12px;padding:16px;color:#1c1c1a">{code}</div>'
+        '<p style="font-size:13px;color:#62615d;margin:14px 0 0">Ισχύει για 10 λεπτά. Αν δεν το ζήτησες εσύ, αγνόησέ το.</p>'
+    )
+    msg.add_alternative(page(heading, "#007c80", inner), subtype="html")
+    try:
+        where = deliver(msg)
+        log.info("Κωδικός '%s' -> %s", purpose, where)
+    except Exception:  # noqa: BLE001
+        log.exception("Αποτυχία αποστολής κωδικού σε %s", to)
+
+
 def deliver(msg: EmailMessage) -> str:
     """Στέλνει με SMTP ή γράφει στο outbox. Επιστρέφει πού κατέληξε."""
     if settings.smtp_host:
