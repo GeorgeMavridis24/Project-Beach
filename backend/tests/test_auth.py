@@ -82,3 +82,50 @@ def test_admin_user_filters(client, make_user):
     names = lambda r: sorted(u["username"] for u in r.json())  # noqa: E731
     assert names(client.get("/admin/users", params={"role": "staff"}, headers=admin["headers"])) == ["eleni"]
     assert names(client.get("/admin/users", params={"q": "gio"}, headers=admin["headers"])) == ["giorgos"]
+
+
+def test_admin_creates_and_deletes_users(client, make_user, grid, sql):
+    from conftest import DAY
+
+    boss = make_user("admin", "boss")
+    h = boss["headers"]
+    # νέος χρήστης από τον admin: ενεργός αμέσως
+    r = client.post("/admin/users", json={"username": "Είσοδος 2", "email": "Gate2@test.gr", "password": "secret123", "role": "staff"}, headers=h)
+    assert r.status_code == 201 and r.json()["role"] == "staff"
+    assert "access_token" in client.post("/auth/login", json={"email": "gate2@test.gr", "password": "secret123"}).json()
+    assert client.post("/admin/users", json={"username": "X", "email": "gate2@test.gr", "password": "secret123"}, headers=h).status_code in (409, 422)
+    customer = make_user(username="pelatis")
+    assert client.post("/admin/users", json={"username": "Xx", "email": "x@test.gr", "password": "secret123"}, headers=customer["headers"]).status_code == 403
+
+    # ο πελάτης έχει μια παλιά κράτηση (για στατιστικά) και μια μελλοντική
+    past_id = sql(
+        """INSERT INTO reserves (user_id, sunbed_id, res_date, res_time, leave_time, price, checkin_code)
+           VALUES (%s, %s, '2026-07-01', '10:00', '14:00', 12, 'PAST00000001')""",
+        (customer["id"], grid["sunbeds"][0]["id"]),
+    )
+    future = client.post("/bookings", json={"sunbed_id": grid["sunbeds"][1]["id"], "res_date": DAY, "start_time": "10:00", "end_time": "12:00"},
+                         headers=customer["headers"]).json()
+
+    assert client.delete(f"/admin/users/{boss['id']}", headers=h).status_code == 400  # όχι τον εαυτό σου
+    r = client.delete(f"/admin/users/{customer['id']}", headers=h)
+    assert r.status_code == 409 and r.headers["X-Future-Bookings"] == "1"
+    r = client.delete(f"/admin/users/{customer['id']}", params={"cancel_future": True}, headers=h)
+    assert r.status_code == 200 and r.json()["cancelled_bookings"] == 1
+    assert not sql("SELECT id FROM users WHERE id = %s", (customer["id"],))
+    # οι κρατήσεις έμειναν, ανώνυμα
+    rows = sql("SELECT id, user_id, status FROM reserves ORDER BY id")
+    assert {r["id"]: (r["user_id"], r["status"]) for r in rows} == {past_id: (None, "confirmed"), future["booking_id"]: (None, "cancelled")}
+    names = {b["booking_id"]: b["username"] for b in client.get("/admin/bookings", headers=h).json()}
+    assert names[past_id] == "Διαγραμμένος χρήστης"
+    stats = client.get("/admin/stats", params={"date_from": "2026-07-01", "date_to": "2026-07-01"}, headers=h).json()
+    assert stats["kpis"]["revenue"] == 12.0  # τα έσοδα δεν χάθηκαν
+    # το token του διαγραμμένου δεν δουλεύει πια
+    assert client.get("/bookings/me", headers=customer["headers"]).status_code == 401
+
+
+def test_cannot_delete_last_admin(client, make_user):
+    boss = make_user("admin", "boss")
+    other = make_user("admin", "other")
+    assert client.delete(f"/admin/users/{other['id']}", headers=boss["headers"]).status_code == 200
+    # τώρα ο boss είναι ο μόνος admin· άλλος admin δεν υπάρχει για να τον σβήσει, ούτε ο ίδιος μπορεί
+    assert client.delete(f"/admin/users/{boss['id']}", headers=boss["headers"]).status_code == 400

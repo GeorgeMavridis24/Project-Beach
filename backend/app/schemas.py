@@ -177,3 +177,17 @@ class LoginVerifyIn(BaseModel):
 class TwoFactorIn(BaseModel):
     enabled: bool
     password: str = Field(min_length=1, max_length=72)
+
+
+class AdminUserCreateIn(BaseModel):
+    """Νέος χρήστης από τον διαχειριστή (ενεργός αμέσως, χωρίς κωδικό email)."""
+
+    username: str = Field(min_length=2, max_length=50)
+    email: str = Field(pattern=EMAIL_PATTERN, max_length=100)
+    password: str = Field(min_length=6, max_length=72)
+    role: Role = "user"
+
+    @field_validator("username", "email")
+    @classmethod
+    def strip(cls, v: str) -> str:
+        return v.strip()

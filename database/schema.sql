@@ -88,7 +88,8 @@ CREATE TABLE sunbeds (
 -- ---------------------------------------------------------------------
 CREATE TABLE reserves (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
+    -- NULL = ο χρήστης διαγράφηκε: η κράτηση μένει ανώνυμα για τα στατιστικά
+    user_id INT NULL,
     sunbed_id INT NOT NULL,
     res_date DATE NOT NULL,
     res_time TIME NOT NULL,
@@ -99,7 +100,7 @@ CREATE TABLE reserves (
     checked_in_at TIMESTAMP NULL DEFAULT NULL,
     cancelled_at TIMESTAMP NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_reserves_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (sunbed_id) REFERENCES sunbeds(id) ON DELETE CASCADE,
     KEY idx_sunbed_date (sunbed_id, res_date),
     KEY idx_date_status (res_date, status),

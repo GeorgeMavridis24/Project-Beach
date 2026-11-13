@@ -10,8 +10,8 @@ from mysql.connector import errors as mysql_errors
 from .. import booking_rules as rules
 from .. import db
 from ..mailer import send_booking_email
-from ..schemas import BookingTimeIn, UserUpdateIn
-from ..security import ensure_can_manage, managed_beach_ids, require_admin, require_manager
+from ..schemas import AdminUserCreateIn, BookingTimeIn, UserUpdateIn
+from ..security import ensure_can_manage, hash_password, managed_beach_ids, require_admin, require_manager
 from ..services import bookings as booking_service
 from ..services import stats as stats_service
 
@@ -85,6 +85,56 @@ def list_users(
         r["spent"] = float(r["spent"])
         r["bookings"] = int(r["bookings"])
     return rows
+
+
+@router.post("/users", status_code=201)
+def create_user(data: AdminUserCreateIn, _: dict = Depends(require_admin)):
+    """Νέος χρήστης από τον διαχειριστή: ενεργός αμέσως (δεν χρειάζεται κωδικό email)."""
+    try:
+        _, user_id = db.execute(
+            "INSERT INTO users (username, email, password, role, email_verified) VALUES (%s, %s, %s, %s, 1)",
+            (data.username, data.email.lower(), hash_password(data.password), data.role),
+        )
+    except mysql_errors.IntegrityError:
+        raise HTTPException(status_code=409, detail="Υπάρχει ήδη λογαριασμός με αυτό το email.")
+    return db.fetch_one("SELECT id, username, email, role FROM users WHERE id = %s", (user_id,))
+
+
+@router.delete("/users/{user_id}")
+def delete_user(user_id: int, cancel_future: bool = False, admin: dict = Depends(require_admin)):
+    """Διαγραφή χρήστη. Οι παλιές κρατήσεις του μένουν ανώνυμα (για τα στατιστικά).
+    Αν έχει μελλοντικές κρατήσεις, πρέπει να δοθεί cancel_future=true για να ακυρωθούν."""
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="Δεν μπορείς να διαγράψεις τον εαυτό σου.")
+    with db.transaction() as cur:
+        cur.execute("SELECT id, username, role FROM users WHERE id = %s FOR UPDATE", (user_id,))
+        target = cur.fetchone()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Ο χρήστης δεν βρέθηκε.")
+        if target["role"] == "admin":
+            cur.execute("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'")
+            if cur.fetchone()["n"] <= 1:
+                raise HTTPException(status_code=409, detail="Δεν μπορείς να διαγράψεις τον τελευταίο διαχειριστή.")
+        cur.execute(
+            """SELECT COUNT(*) AS n FROM reserves
+               WHERE user_id = %s AND status = 'confirmed' AND res_date >= %s""",
+            (user_id, rules.today()),
+        )
+        future = cur.fetchone()["n"]
+        if future and not cancel_future:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Ο χρήστης έχει {future} μελλοντικές κρατήσεις. Θα ακυρωθούν αν συνεχίσεις.",
+                headers={"X-Future-Bookings": str(future)},
+            )
+        if future:
+            cur.execute(
+                """UPDATE reserves SET status = 'cancelled', cancelled_at = NOW()
+                   WHERE user_id = %s AND status = 'confirmed' AND res_date >= %s""",
+                (user_id, rules.today()),
+            )
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    return {"deleted": user_id, "username": target["username"], "cancelled_bookings": future}
 
 
 @router.put("/users/{user_id}")

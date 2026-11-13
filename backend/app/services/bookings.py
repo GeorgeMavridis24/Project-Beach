@@ -36,8 +36,10 @@ BOOKING_SELECT = """
     FROM reserves r
     JOIN sunbeds s ON s.id = r.sunbed_id
     JOIN beaches b ON b.id = s.beach_id
-    JOIN users u ON u.id = r.user_id
+    LEFT JOIN users u ON u.id = r.user_id  -- LEFT: κρατήσεις διαγραμμένων χρηστών
 """
+
+DELETED_USER = "Διαγραμμένος χρήστης"
 
 OVERLAP_SQL = """
     SELECT id FROM reserves
@@ -86,8 +88,8 @@ def _present(row: dict, include_code: bool) -> dict:
         "open_time": row["open_time"],
         "close_time": row["close_time"],
         "user_id": row["user_id"],
-        "username": row["username"],
-        "email": row["email"],
+        "username": row["username"] or DELETED_USER,
+        "email": row["email"] or "",
         "is_past": finished,
         "can_cancel": active and not started and row["checked_in_at"] is None,
         "can_modify": active and not started and row["checked_in_at"] is None,

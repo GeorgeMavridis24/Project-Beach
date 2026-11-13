@@ -230,7 +230,7 @@ def deliver(msg: EmailMessage) -> str:
 
 def send_booking_email(booking: dict, kind: str) -> None:
     """Ασφαλής αποστολή: τυχόν σφάλμα καταγράφεται, δεν "σπάει" την κράτηση."""
-    if not settings.mail_enabled:
+    if not settings.mail_enabled or not booking.get("email"):
         return
     try:
         where = deliver(build_booking_email(booking, kind))
