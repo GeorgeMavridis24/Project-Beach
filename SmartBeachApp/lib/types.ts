@@ -4,6 +4,7 @@ export type SunbedType = 'normal' | 'premium';
 export type User = { id: number; username: string; email: string; role: Role; two_factor_enabled?: boolean };
 
 export type AppConfig = {
+  api_version?: number;
   season_start_month: number;
   season_end_month: number;
   default_open_time: string;

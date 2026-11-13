@@ -40,6 +40,11 @@ def _bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+# Αυξάνεται όταν αλλάζει το API. Η εφαρμογή το ελέγχει και προειδοποιεί αν
+# τρέχει παλιότερος server (π.χ. έμεινε ανοιχτό παράθυρο από παλιό φάκελο).
+API_VERSION = 6
+
+
 class Settings:
     # --- Βάση δεδομένων ---
     db_host = os.getenv("DB_HOST", "127.0.0.1")

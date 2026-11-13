@@ -19,3 +19,6 @@ function guessApiUrl(): string {
 }
 
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL || guessApiUrl()).replace(/\/$/, '');
+
+/** Η ελάχιστη έκδοση server που χρειάζεται αυτή η εφαρμογή (βλ. API_VERSION στο backend/app/config.py). */
+export const REQUIRED_API_VERSION = 6;

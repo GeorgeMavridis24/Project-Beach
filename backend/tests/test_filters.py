@@ -58,3 +58,16 @@ def test_grid_validation_and_reset(client, grid):
     assert client.post(url + "/grid", json={"rows": 2, "cols": 2, "premium_rows": 0, "premium_price": 1, "price": 1}, headers=h).status_code == 409
     assert client.post(f"/admin/beaches/{grid['beach_id']}/sunbeds/grid", json={"rows": 2, "cols": 2, "premium_rows": 5, "premium_price": 1, "price": 1}, headers=h).status_code == 422
     assert client.delete(url, headers=h).json() == {"deleted": 12}
+
+
+def test_config_reports_api_version_required_by_app(client):
+    """Η εφαρμογή προειδοποιεί όταν ο server είναι παλιότερος από όσο χρειάζεται.
+    Το API_VERSION του backend πρέπει να καλύπτει το REQUIRED_API_VERSION της εφαρμογής."""
+    import re
+    from pathlib import Path
+
+    from app.config import API_VERSION
+
+    app_config = Path(__file__).resolve().parents[2] / "SmartBeachApp" / "lib" / "config.ts"
+    required = int(re.search(r"REQUIRED_API_VERSION = (\d+)", app_config.read_text(encoding="utf-8")).group(1))
+    assert client.get("/config").json()["api_version"] == API_VERSION >= required

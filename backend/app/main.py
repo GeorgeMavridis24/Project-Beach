@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .booking_rules import BookingRuleError
-from .config import settings
+from .config import API_VERSION, settings
 from .errors import ConflictError, NotFoundError
 from .routers import admin, assistant, auth, beaches, bookings, partners, staff
 from .services.otp import InvalidCodeError
@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(
     title="SmartBeach API",
-    version="2.0.0",
+    version=f"2.{API_VERSION}.0",
     description="Σύστημα κρατήσεων ξαπλωστρών για beach bars.",
 )
 

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import booking_rules as rules
 from .. import db
-from ..config import settings
+from ..config import API_VERSION, settings
 from ..schemas import TIME_PATTERN, BeachIn, GridIn, SunbedUpdateIn
 from ..security import ensure_can_manage, require_admin, require_manager
 from ..services import beaches as beach_service
@@ -17,6 +17,7 @@ router = APIRouter(tags=["Παραλίες & Ξαπλώστρες"])
 def public_config():
     """Κανόνες που χρειάζεται η εφαρμογή για να φτιάξει τις επιλογές ημερομηνίας/ώρας."""
     return {
+        "api_version": API_VERSION,
         "season_start_month": settings.season_start_month,
         "season_end_month": settings.season_end_month,
         "default_open_time": settings.default_open_time,
