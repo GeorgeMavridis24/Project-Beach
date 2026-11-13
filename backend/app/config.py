@@ -1,14 +1,36 @@
 """Ρυθμίσεις εφαρμογής. Όλες διαβάζονται από μεταβλητές περιβάλλοντος
 (ή από το αρχείο backend/.env), ώστε να μην υπάρχουν κωδικοί μέσα στον κώδικα."""
 
+import io
 import logging
 import os
 import secrets
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
 log = logging.getLogger("smartbeach")
+
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"  # πάντα backend/.env
+
+
+def _load_env_file() -> None:
+    """Διαβάζει το backend/.env από οποιονδήποτε φάκελο κι αν τρέξει ο server.
+    Στα Windows το Notepad μπορεί να το σώσει ως ".env.txt" ή σε UTF-16 - τα
+    δεχόμαστε κι αυτά, ώστε να μη "χάνονται" σιωπηλά οι ρυθμίσεις."""
+    path = ENV_FILE
+    if not path.exists() and ENV_FILE.with_name(".env.txt").exists():
+        path = ENV_FILE.with_name(".env.txt")
+        print("Προσοχή: το αρχείο λέγεται .env.txt - μετονόμασέ το σε .env")
+    if not path.exists():
+        print(f"Προσοχή: δεν βρέθηκε το αρχείο ρυθμίσεων {ENV_FILE} - χρησιμοποιούνται προεπιλογές.")
+        return
+    raw = path.read_bytes()
+    encoding = "utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig"
+    load_dotenv(stream=io.StringIO(raw.decode(encoding)))
+
+
+_load_env_file()
 
 
 def _bool(name: str, default: bool) -> bool:
