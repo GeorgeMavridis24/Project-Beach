@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from .booking_rules import BookingRuleError
 from .config import settings
 from .errors import ConflictError, NotFoundError
-from .routers import admin, assistant, auth, beaches, bookings, staff
+from .routers import admin, assistant, auth, beaches, bookings, partners, staff
 
 logging.basicConfig(level=logging.INFO)
 
@@ -53,5 +53,5 @@ def health():
     return {"status": "ok", "service": "SmartBeach API"}
 
 
-for r in (auth.router, beaches.router, bookings.router, admin.router, staff.router, assistant.router):
+for r in (auth.router, beaches.router, bookings.router, admin.router, staff.router, partners.router, assistant.router):
     app.include_router(r)

@@ -39,6 +39,8 @@ type AuthState = {
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Ξαναδιαβάζει τον χρήστη (π.χ. όταν εγκριθεί και γίνει καταστηματάρχης). */
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -94,9 +96,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [login],
   );
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const me = await api<User>('/auth/me');
+      setUser((cur) => (cur && cur.role === me.role && cur.username === me.username ? cur : me));
+    } catch {}
+  }, []);
+
   const value = useMemo(
-    () => ({ user, config, loading, login, register, logout }),
-    [user, config, loading, login, register, logout],
+    () => ({ user, config, loading, login, register, logout, refreshUser }),
+    [user, config, loading, login, register, logout, refreshUser],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

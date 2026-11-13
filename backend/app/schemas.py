@@ -97,3 +97,58 @@ class ChatMessage(BaseModel):
 
 class ChatIn(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=40)
+
+
+PHONE_PATTERN = r"^[0-9 +()\-]{7,20}$"
+
+
+class PartnerRequestIn(BaseModel):
+    """Αίτηση "Γίνε συνεργάτης": στοιχεία επιχείρησης και διάταξη του χώρου."""
+
+    business_name: str = Field(min_length=2, max_length=100)
+    description: str = Field(default="", max_length=2000)
+    phone: str = Field(pattern=PHONE_PATTERN)
+    ltd: float = Field(ge=-90, le=90)
+    lgd: float = Field(ge=-180, le=180)
+    open_time: str = Field(pattern=TIME_PATTERN)
+    close_time: str = Field(pattern=TIME_PATTERN)
+    rows: int = Field(ge=1, le=30)
+    cols: int = Field(ge=1, le=30)
+    premium_rows: int = Field(ge=0, le=30)
+    premium_price: float = Field(gt=0, le=9999)
+    price: float = Field(gt=0, le=9999)
+    message: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("business_name", "description", "phone")
+    @classmethod
+    def strip(cls, v: str) -> str:
+        return v.strip()
+
+    @model_validator(mode="after")
+    def check(self) -> "PartnerRequestIn":
+        if self.premium_rows > self.rows:
+            raise ValueError("Οι VIP σειρές δεν μπορεί να είναι περισσότερες από τις σειρές.")
+        if self.close_time <= self.open_time:
+            raise ValueError("Η ώρα κλεισίματος πρέπει να είναι μετά την ώρα ανοίγματος.")
+        return self
+
+
+class MessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("body")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Το μήνυμα είναι κενό.")
+        return v.strip()
+
+
+class DecisionIn(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class BookingEmailIn(BaseModel):
+    """Αποστολή κράτησης σε email. Αν λείπει το `to`, πάει στο email του χρήστη."""
+
+    to: Optional[str] = Field(default=None, pattern=EMAIL_PATTERN, max_length=100)

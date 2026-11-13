@@ -42,6 +42,7 @@ def main() -> None:
 
     with db.transaction() as cur:
         if args.reset:
+            cur.execute("DELETE FROM partner_requests")
             cur.execute("DELETE FROM reserves")
             cur.execute("DELETE FROM sunbeds")
             cur.execute("DELETE FROM users")
@@ -70,6 +71,24 @@ def main() -> None:
                 "UPDATE beaches SET owner_id = (SELECT id FROM users WHERE email = %s) WHERE id = %s AND owner_id IS NULL",
                 (f"owner{i}@smartbeach.gr", b["id"]),
             )
+
+        # --- μια αίτηση συνεργάτη σε εκκρεμότητα, για να τη δει ο admin στο demo
+        cur.execute("SELECT COUNT(*) AS n FROM partner_requests")
+        if not cur.fetchone()["n"]:
+            cur.execute("SELECT id FROM users WHERE email = 'customer2@demo.gr'")
+            applicant = cur.fetchone()
+            if applicant:
+                cur.execute(
+                    """INSERT INTO partner_requests (user_id, business_name, description, phone, ltd, lgd, open_time, close_time,
+                                                     grid_rows, grid_cols, premium_rows, premium_price, price, unread_admin)
+                       VALUES (%s, 'Kymata Beach Bar', 'Οικογενειακό beach bar με ρηχά νερά και παιδική γωνιά.',
+                               '6912345678', 40.2569, 23.1985, '09:00', '20:00', 4, 8, 1, 22, 11, 1)""",
+                    (applicant["id"],),
+                )
+                cur.execute(
+                    "INSERT INTO partner_messages (request_id, sender_id, body) VALUES (%s, %s, %s)",
+                    (cur.lastrowid, applicant["id"], "Καλησπέρα! Θα ήθελα να μπει και το beach bar μας στην εφαρμογή."),
+                )
 
         # --- ξαπλώστρες
         cur.execute("SELECT id, TIME_FORMAT(open_time, '%H:%i') AS o, TIME_FORMAT(close_time, '%H:%i') AS c FROM beaches ORDER BY id")

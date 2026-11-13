@@ -25,6 +25,7 @@ function RootNavigator() {
       <Stack.Screen name="index" />
       <Stack.Protected guard={!!user}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="partner" />
         <Stack.Protected guard={isStaff}>
           <Stack.Screen name="admin" />
         </Stack.Protected>

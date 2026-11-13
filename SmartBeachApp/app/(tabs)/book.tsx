@@ -4,6 +4,7 @@ import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import { openDirections } from '@/components/beachMapShared';
 import { BookingQr } from '@/components/BookingQr';
+import { EmailBooking } from '@/components/EmailBooking';
 import { DateStrip, fitWindow, TimeRangePicker, TimeWindow } from '@/components/pickers';
 import { MapCell, MapLegend, SunbedMap } from '@/components/SunbedMap';
 import { Badge, Banner, Button, Card, Chip, ChipRow, Empty, Label, Loading, Screen } from '@/components/ui';
@@ -133,7 +134,11 @@ export default function BookScreen() {
           </Text>
           {done.checkin_code ? <BookingQr code={done.checkin_code} /> : null}
         </Card>
-        <Banner text={`Σου στείλαμε email επιβεβαίωσης με τον κωδικό QR στο ${user?.email ?? 'email σου'}.`} tone="info" />
+        {config?.email_enabled ? (
+          <Banner text={`Σου στείλαμε email επιβεβαίωσης με τον κωδικό QR στο ${user?.email ?? 'email σου'}.`} tone="info" />
+        ) : null}
+        <EmailBooking bookingId={done.booking_id} />
+        <View style={{ height: 12 }} />
         <Button title="Οι κρατήσεις μου" icon="ticket-outline" onPress={() => router.navigate('/bookings')} />
         <Button
           title="Οδηγίες προς το κατάστημα"

@@ -10,6 +10,7 @@ import { confirm, notify } from '@/lib/dialogs';
 import type { Booking } from '@/lib/types';
 
 import { BookingQr } from './BookingQr';
+import { EmailBooking } from './EmailBooking';
 import { openDirections } from './beachMapShared';
 import { TimeRangePicker, TimeWindow } from './pickers';
 import { Badge, Banner, Button, Card } from './ui';
@@ -21,6 +22,7 @@ import { Badge, Banner, Button, Card } from './ui';
 export function BookingCard({ booking, admin = false, onChanged }: { booking: Booking; admin?: boolean; onChanged: () => void }) {
   const { config } = useAuth();
   const [showQr, setShowQr] = useState(false);
+  const [showEmail, setShowEmail] = useState(false);
   const [editing, setEditing] = useState(false);
   const [win, setWin] = useState<TimeWindow>({ start: booking.start_time, end: booking.end_time });
   const [busy, setBusy] = useState(false);
@@ -84,6 +86,7 @@ export function BookingCard({ booking, admin = false, onChanged }: { booking: Bo
       <Row icon="cash-outline" text={euro(booking.price)} strong />
 
       {showQr && booking.checkin_code ? <BookingQr code={booking.checkin_code} /> : null}
+      {showEmail ? <EmailBooking bookingId={booking.booking_id} onClose={() => setShowEmail(false)} /> : null}
 
       {editing ? (
         <View style={{ marginTop: 8 }}>
@@ -104,6 +107,9 @@ export function BookingCard({ booking, admin = false, onChanged }: { booking: Bo
         <View style={b.actions}>
           {!admin && booking.checkin_code && booking.status === 'confirmed' && !booking.is_past ? (
             <Button title={showQr ? 'Απόκρυψη QR' : 'QR εισόδου'} icon="qr-code-outline" small onPress={() => setShowQr(!showQr)} />
+          ) : null}
+          {!admin && booking.status === 'confirmed' && !showEmail ? (
+            <Button title="Αποστολή στο email" icon="mail-outline" small variant="secondary" onPress={() => setShowEmail(true)} />
           ) : null}
           {canModify ? <Button title="Αλλαγή ώρας" icon="create-outline" small variant="secondary" onPress={() => setEditing(true)} /> : null}
           {canCancel ? <Button title="Ακύρωση" icon="close-outline" small variant="danger" onPress={cancel} loading={busy} /> : null}

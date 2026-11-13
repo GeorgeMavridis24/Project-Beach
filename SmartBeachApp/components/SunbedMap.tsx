@@ -193,3 +193,15 @@ const m = StyleSheet.create({
   heatLegend: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   heatBar: { flex: 1, height: 10, borderRadius: 5, overflow: 'hidden', flexDirection: 'row', gap: 1 },
 });
+
+/** Κελιά για προεπισκόπηση διάταξης (πριν υπάρξουν ξαπλώστρες στη βάση). */
+export function previewCells(rows: number, cols: number, premiumRows: number): MapCell[] {
+  const cells: MapCell[] = [];
+  let id = 1;
+  for (let x = 1; x <= rows; x++) {
+    for (let y = 1; y <= cols; y++) {
+      cells.push({ id: id++, grid_x: x, grid_y: y, type: x <= premiumRows ? 'premium' : 'normal', status: 'available' });
+    }
+  }
+  return cells;
+}

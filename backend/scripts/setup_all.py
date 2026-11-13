@@ -16,10 +16,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from envfile import read_env, update_env  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
 APP = ROOT / "SmartBeachApp"
-ENV = BACKEND / ".env"
 SCHEMA = ROOT / "database" / "schema.sql"
 
 
@@ -90,36 +92,15 @@ def find_mysql() -> tuple[int, str]:
     sys.exit(1)
 
 
-def read_env() -> dict:
-    """Κρατάμε ρυθμίσεις που ίσως υπάρχουν ήδη (π.χ. κλειδί AI, email)."""
-    path = ENV if ENV.exists() else ENV.with_name(".env.txt")
-    if not path.exists():
-        return {}
-    raw = path.read_bytes()
-    text = raw.decode("utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig", errors="replace")
-    values = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, value = line.split("=", 1)
-            values[key.strip()] = value.strip()
-    return values
-
-
 def write_env(port: int, password: str) -> None:
     title("3/6  Ρυθμίσεις (backend/.env)")
-    values = read_env()
-    values.update({"DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_USER": "root", "DB_PASSWORD": password, "DB_NAME": "smartbeach"})
-    if values.get("SECRET_KEY", "change-me") in ("", "change-me"):
-        values["SECRET_KEY"] = secrets.token_urlsafe(48)
-    values.setdefault("CHECKIN_REQUIRE_TODAY", "false")
-    lines = ["# Δημιουργήθηκε αυτόματα από το 1-EGKATASTASI.bat - δες και το .env.example"]
-    lines += [f"{k}={v}" for k, v in values.items()]
-    ENV.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    stray = ENV.with_name(".env.txt")
-    if stray.exists():
-        stray.unlink()
-    print(f"OK - {ENV}")
+    current = read_env()
+    updates = {"DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_USER": "root", "DB_PASSWORD": password, "DB_NAME": "smartbeach"}
+    if current.get("SECRET_KEY", "change-me") in ("", "change-me"):
+        updates["SECRET_KEY"] = secrets.token_urlsafe(48)
+    if "CHECKIN_REQUIRE_TODAY" not in current:
+        updates["CHECKIN_REQUIRE_TODAY"] = "false"
+    print(f"OK - {update_env(updates)}")
 
 
 def create_database(port: int, password: str) -> None:
@@ -166,9 +147,17 @@ def main() -> None:
     create_database(port, password)
     seed()
     install_app()
+    if ask("\nΘέλεις να ρυθμίσεις τώρα την αποστολή email (Gmail); (ν/ο) [ο]: ", "ο").lower() in ("ν", "n", "y", "ναι", "yes"):
+        import setup_email
+
+        try:
+            setup_email.main()
+        except SystemExit as exc:
+            print(exc)
     title("ΕΤΟΙΜΟ!")
     print(
-        "Τώρα κάνε διπλό κλικ στο 2-EKKINISI.bat.\n\n"
+        "Τώρα κάνε διπλό κλικ στο 2-EKKINISI.bat.\n"
+        "Για αποστολή email αργότερα: διπλό κλικ στο 3-RYTHMISI-EMAIL.bat.\n\n"
         "Λογαριασμοί (κωδικός demo1234):\n"
         "  Πελάτης:          customer1@demo.gr\n"
         "  Καταστηματάρχης:  owner1@smartbeach.gr\n"

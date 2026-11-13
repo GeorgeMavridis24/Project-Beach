@@ -33,11 +33,15 @@ SUBJECTS = {
     "created": "Επιβεβαίωση κράτησης",
     "updated": "Αλλαγή ώρας κράτησης",
     "cancelled": "Ακύρωση κράτησης",
+    "resend": "Η κράτησή σου",
+    "shared": "Κράτηση ξαπλώστρας",
 }
 INTROS = {
     "created": "Η κράτησή σου ολοκληρώθηκε! Δείξε τον κωδικό QR στην είσοδο.",
     "updated": "Οι ώρες της κράτησής σου άλλαξαν. Ο κωδικός QR παραμένει ο ίδιος.",
     "cancelled": "Η κράτησή σου ακυρώθηκε. Ελπίζουμε να σε δούμε σύντομα!",
+    "resend": "Αυτά είναι τα στοιχεία της κράτησής σου. Δείξε τον κωδικό QR στην είσοδο.",
+    "shared": "Σου στάλθηκε μια κράτηση ξαπλώστρας από το SmartBeach. Δείξε τον κωδικό QR στην είσοδο.",
 }
 
 
@@ -53,8 +57,9 @@ def qr_png(code: str) -> bytes:
     return buf.getvalue()
 
 
-def build_booking_email(booking: dict, kind: str) -> EmailMessage:
-    """Φτιάχνει το email (κείμενο + HTML με ενσωματωμένο QR)."""
+def build_booking_email(booking: dict, kind: str, to: str | None = None) -> EmailMessage:
+    """Φτιάχνει το email (κείμενο + HTML με ενσωματωμένο QR).
+    `to`: άλλος παραλήπτης (π.χ. φίλος) αντί για τον κάτοχο της κράτησης."""
     b = booking
     when = long_date(b["res_date"])
     seat = f"Σειρά {b['grid_x']}, θέση {b['grid_y']} ({'VIP' if b['type'] == 'premium' else 'κανονική'})"
@@ -67,7 +72,8 @@ def build_booking_email(booking: dict, kind: str) -> EmailMessage:
     msg = EmailMessage()
     msg["Subject"] = f"{SUBJECTS[kind]} – {b['beach_name']}, {when}"
     msg["From"] = settings.mail_from
-    msg["To"] = b["email"]
+    msg["To"] = to or b["email"]
+    greeting = "Γεια σου," if kind == "shared" else f"Γεια σου {b['username']},"
 
     rows = [
         ("Κατάστημα", b["beach_name"]),
@@ -81,7 +87,7 @@ def build_booking_email(booking: dict, kind: str) -> EmailMessage:
         rows.append(("Κωδικός εισόδου", pretty_code))
 
     text = "\n".join(
-        [f"Γεια σου {b['username']},", "", INTROS[kind], ""]
+        [greeting, "", INTROS[kind], ""]
         + [f"{k}: {v}" for k, v in rows]
         + ["", f"Οδηγίες: {directions}", "", "SmartBeach"]
     )
@@ -108,7 +114,7 @@ def build_booking_email(booking: dict, kind: str) -> EmailMessage:
     <div style="font-size:15px;opacity:.9">{html.escape(SUBJECTS[kind])}</div>
   </div>
   <div style="background:#fff;border-radius:0 0 14px 14px;padding:22px;border:1px solid #e4e2da;border-top:0">
-    <p style="font-size:16px;margin:0 0 6px">Γεια σου {html.escape(b['username'])},</p>
+    <p style="font-size:16px;margin:0 0 6px">{html.escape(greeting)}</p>
     <p style="font-size:15px;color:#3c3b38;margin:0 0 14px">{html.escape(INTROS[kind])}</p>
     <table style="font-size:15px;border-collapse:collapse">{table}</table>
     {qr_html}
@@ -121,6 +127,44 @@ def build_booking_email(booking: dict, kind: str) -> EmailMessage:
     if show_qr:
         msg.get_payload()[1].add_related(qr_png(code), maintype="image", subtype="png", cid=qr_cid)
     return msg
+
+
+def page(heading: str, color: str, inner_html: str) -> str:
+    return f"""<!doctype html><html><body style="margin:0;background:#f6f4ef;font-family:Segoe UI,Arial,sans-serif">
+<div style="max-width:520px;margin:0 auto;padding:24px">
+  <div style="background:{color};color:#fff;border-radius:14px 14px 0 0;padding:18px 22px">
+    <div style="font-size:22px;font-weight:800">SmartBeach</div>
+    <div style="font-size:15px;opacity:.9">{html.escape(heading)}</div>
+  </div>
+  <div style="background:#fff;border-radius:0 0 14px 14px;padding:22px;border:1px solid #e4e2da;border-top:0">
+    {inner_html}
+  </div>
+</div></body></html>"""
+
+
+def build_simple_email(to: str, subject: str, heading: str, paragraphs: list[str], color: str = "#007c80") -> EmailMessage:
+    """Απλό email ειδοποίησης (π.χ. για αιτήσεις συνεργατών)."""
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.mail_from
+    msg["To"] = to
+    msg.set_content("\n\n".join(paragraphs + ["SmartBeach"]))
+    inner = "".join(
+        f'<p style="font-size:15px;color:#3c3b38;margin:0 0 12px;white-space:pre-line">{html.escape(p)}</p>' for p in paragraphs
+    )
+    msg.add_alternative(page(heading, color, inner), subtype="html")
+    return msg
+
+
+def send_simple_email(to: str, subject: str, heading: str, paragraphs: list[str], color: str = "#007c80") -> None:
+    """Ασφαλής αποστολή απλού email (για BackgroundTasks)."""
+    if not settings.mail_enabled or not to:
+        return
+    try:
+        where = deliver(build_simple_email(to, subject, heading, paragraphs, color))
+        log.info("Email '%s' -> %s", subject, where)
+    except Exception:  # noqa: BLE001
+        log.exception("Αποτυχία αποστολής email '%s'", subject)
 
 
 def deliver(msg: EmailMessage) -> str:

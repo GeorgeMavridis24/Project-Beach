@@ -25,6 +25,7 @@ def public_config():
         "half_day_max_hours": settings.half_day_max_hours,
         "half_day_factor": settings.half_day_factor,
         "first_bookable_date": rules.first_bookable_date().isoformat(),
+        "email_enabled": bool(settings.smtp_host),
         "today": rules.today().isoformat(),
     }
 

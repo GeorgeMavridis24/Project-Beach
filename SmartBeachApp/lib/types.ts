@@ -13,6 +13,7 @@ export type AppConfig = {
   half_day_factor: number;
   first_bookable_date: string;
   today: string;
+  email_enabled: boolean;
 };
 
 export type BeachInfo = {
@@ -129,3 +130,43 @@ export type Stats = {
 };
 
 export type AdminUser = User & { created_at: string; bookings: number; spent: number; owns: string | null };
+
+export type PartnerMessage = {
+  id: number;
+  sender_id: number | null;
+  sender_name: string;
+  sender_role: Role | null;
+  is_system: boolean;
+  body: string;
+  created_at: string;
+};
+
+export type PartnerRequest = {
+  id: number;
+  user_id: number;
+  username: string;
+  email: string;
+  user_role: Role;
+  business_name: string;
+  description: string;
+  phone: string;
+  ltd: number;
+  lgd: number;
+  open_time: string;
+  close_time: string;
+  rows: number;
+  cols: number;
+  premium_rows: number;
+  premium_price: number;
+  price: number;
+  total_sunbeds: number;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note: string | null;
+  beach_id: number | null;
+  unread_user: number;
+  unread_admin: number;
+  created_at: string;
+  decided_at: string | null;
+  message_count?: number;
+  messages?: PartnerMessage[];
+};

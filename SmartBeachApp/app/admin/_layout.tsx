@@ -30,6 +30,8 @@ export default function AdminLayout() {
       </Stack.Protected>
       <Stack.Protected guard={isAdmin}>
         <Stack.Screen name="users" options={{ title: 'Χρήστες' }} />
+        <Stack.Screen name="partners" options={{ title: 'Αιτήσεις συνεργατών' }} />
+        <Stack.Screen name="request" options={{ title: 'Αίτηση' }} />
       </Stack.Protected>
     </Stack>
   );

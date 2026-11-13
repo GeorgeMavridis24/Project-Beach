@@ -83,8 +83,11 @@ def sql():
 
 @pytest.fixture(autouse=True)
 def clean(sql):
+    from app.routers import bookings as booking_router
+
+    booking_router._sent.clear()  # όριο αποστολών email ανά χρήστη
     sql("SET FOREIGN_KEY_CHECKS = 0")
-    for table in ("reserves", "sunbeds", "users"):
+    for table in ("partner_messages", "partner_requests", "reserves", "sunbeds", "users"):
         sql(f"TRUNCATE TABLE {table}")
     sql("SET FOREIGN_KEY_CHECKS = 1")
     yield

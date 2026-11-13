@@ -4,8 +4,6 @@ import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { C } from '@/constants/brand';
-import { useAuth } from '@/lib/auth';
-import { isStaffLike } from '@/lib/roles';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -17,8 +15,6 @@ function icon(name: IconName) {
 }
 
 export default function TabLayout() {
-  const { user } = useAuth();
-  const isStaff = isStaffLike(user);
   return (
     <Tabs
       screenOptions={{
@@ -34,10 +30,7 @@ export default function TabLayout() {
       <Tabs.Screen name="book" options={{ title: 'Κράτηση', tabBarIcon: icon('calendar-outline') }} />
       <Tabs.Screen name="bookings" options={{ title: 'Κρατήσεις', tabBarIcon: icon('ticket-outline') }} />
       <Tabs.Screen name="assistant" options={{ title: 'Βοηθός', tabBarIcon: icon('chatbubbles-outline') }} />
-      <Tabs.Screen
-        name="manage"
-        options={{ title: 'Διαχείριση', tabBarIcon: icon('briefcase-outline'), href: isStaff ? undefined : null }}
-      />
+      <Tabs.Screen name="account" options={{ title: 'Προφίλ', tabBarIcon: icon('person-circle-outline') }} />
     </Tabs>
   );
 }
